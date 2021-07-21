@@ -45,8 +45,35 @@
             camera.updateProjectionMatrix();
         });
 
+        // particles
+        // const loader = new THREE.TextureLoader();
+        // const starTex = loader.load('./Untitled.png');
+        // const particlesGeometry = new THREE.BufferGeometry;
+        // const particlesCount = 5000;
+        // const posArray = new Float32Array(particlesCount * 3);
+        // for (let i = 0; i < particlesCount * 3; i++) {
+        //     posArray[i] = (Math.random() - .5) * 20;
+        // }
+        // particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        // const particleMat = new THREE.PointsMaterial({ size: .01, map: starTex, transparent: true, color: 'orange' });
+        // const particleMesh = new THREE.Points(particlesGeometry, particleMat);
 
-        // create our torus
+        // create torus particles
+        const loader = new THREE.TextureLoader();
+        const starTex = loader.load('./Untitled.png');
+        const particleGeo = new THREE.TorusGeometry( 1, 2.5, 250, 200 );
+        const particleMat = new THREE.PointsMaterial({ size: .02, map: starTex, transparent: true, color: 'orange' });
+        const particleMesh = new THREE.Points(particleGeo, particleMat);
+        particleMesh.scale.x = 5;
+        particleMesh.scale.y = 5;
+        particleMesh.scale.z = 20;
+        particleMesh.position.x = .6
+        particleMesh.position.y = -6.5;
+        particleMesh.position.z = -1;
+        particleMesh.rotation.y = Math.PI / 2;
+
+
+        // create our torusknot
         const torusGeo = new THREE.TorusKnotGeometry();
         const torusMat = new THREE.MeshLambertMaterial( { color: 0x0000FF } );
         const torusKnot = new THREE.Mesh( torusGeo, torusMat );
@@ -55,16 +82,15 @@
         line.material.depthTest = true;
         line.material.opacity = 0.25;
         line.material.transparent = true;
-        //line.material.color = 0x333333;
 
         // create our plane
         const planeGeo = new THREE.PlaneGeometry(20, 10, 10);
-        const planeMat = new THREE.MeshLambertMaterial({color: 0x3300FF});
+        const planeMat = new THREE.MeshLambertMaterial({color: 0x00FF44});
         planeMat.side = THREE.DoubleSide;
         const planeMesh = new THREE.Mesh(planeGeo, planeMat);
 
         // create our lights
-        const light = new THREE.PointLight(0xFFFFFF, 1, 500);
+        const light = new THREE.AmbientLight(0xFFFFFF, .4);
         const directionalLight = new THREE.DirectionalLight( 0xffffff, 0.5 );
 
 
@@ -92,14 +118,18 @@
         scene.add(torusKnot);
         scene.add(line);
         scene.add(planeMesh);
-        scene.add( directionalLight );
+        scene.add(directionalLight );
         scene.add(light);
+        scene.add(particleMesh);
+        //scene.add(particleMesh);
 
         var render = function () {
             requestAnimationFrame(render);
 
             torusKnot.rotation.z -= 0.01;
             line.rotation.z -= 0.01;
+            particleMesh.rotation.z += .0002;
+            //particleMesh.rotation.y -= .0002;
 
             renderer.render(scene, camera);
         };
