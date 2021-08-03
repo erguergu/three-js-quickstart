@@ -168,11 +168,10 @@ class OrbitTests {
 
     // okay this sort of works now...
     // Issues I noticed:
-    // 1. seems to fail to properly take into account the actual location of the cone.
-    //    it jumps up to the top of the sphere for some reason. is the sphere's 'up' wrong?
-    // 2. once you start rotating, it looks good, nice and accurate, but then when you let go
-    //    and click again, it 'starts' the next rotation at a weird point
-    // 3. much less important: the sphere now rotates nicely, but it doesn't get the same benefit
+    // 1. When the cone is on the left side of the screen, the cone rotates fine but the
+    //    sphere rotates in reverse about the x axis. When the cone is on the right side,
+    //    both cone and sphere rotate as expected about both axes.
+    // 2. much less important: the sphere now rotates nicely, but it doesn't get the same benefit
     //    from the _spherical.makeSafe thing.
 
     const position = this._cone.position;
@@ -184,14 +183,15 @@ class OrbitTests {
     this._spherical.makeSafe();
     this._spherical.radius *= this._scale;
     this._spherical.radius = Math.max( this._minDistance, Math.min( this._maxDistance, this._spherical.radius ) );
-    console.log(`spherical.radius: ${this._spherical.radius}`);
     this._offset.setFromSpherical( this._spherical );
     this._offset.applyQuaternion( this._quatInverse );
     position.copy( this._circle.position ).add( this._offset );
     this._cone.lookAt( this._circle.position );
     
-    const sphereQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(this._sphericalDelta.phi, -this._sphericalDelta.theta, 0));
+    //this._sphericalDelta.makeSafe();
+    const sphereQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(this._sphericalDelta.phi, this._sphericalDelta.theta, 0));
     this._circle.applyQuaternion(sphereQuat);
+    
     this._sphericalDelta.set(0,0,0);
     
 
@@ -294,6 +294,8 @@ class OrbitTests {
 
   _onMouseDown(event) {
     event.preventDefault();
+    
+    this._rotateStart.set( event.clientX, event.clientY );
 
     if (event.button == 0) {
       this._mouseDownLeft = true;
