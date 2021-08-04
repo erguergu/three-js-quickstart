@@ -1,6 +1,6 @@
 
 //import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.118.1/build/three.module.js';
-import { OrbitControls } from './OrbitControls.js';
+import { MMOrbitControls } from './MMOrbitControls.js';
 import * as THREE from './three.module.js';
 
 class OrbitTests {
@@ -87,9 +87,9 @@ class OrbitTests {
     this._cone = this.createCone();
 
     // controls
-    this._useMyRotation = true;
+    this._useMyRotation = false;
     if (!this._useMyRotation) {
-      const controls = new OrbitControls(this._cone, renderer.domElement);
+      const controls = new MMOrbitControls(this._cone, renderer.domElement);
     } else {
       this._canv.addEventListener('mouseup', (e) => this._onMouseUp(e), false);
       this._canv.addEventListener('mousedown', (e) => this._onMouseDown(e), false);
