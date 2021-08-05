@@ -84,12 +84,13 @@ class OrbitTests {
     //this._rotationController = new THREE.Object3D();
     //this._scene.add(this._rotationController);
     this._circle = this.createCircle("circle1", 0x00FF00);
-    this._cone = this.createCone();
+    this._cone = this.createCone(0x0000FF, new THREE.Vector3(0, 0, -1));
+    this._player = this.createCone(0xFF0000, new THREE.Vector3(0, 0, 0));
 
     // controls
     this._useMyRotation = false;
     if (!this._useMyRotation) {
-      const controls = new MMOrbitControls(this._cone, renderer.domElement);
+      const controls = new MMOrbitControls(this._cone, this._player, this._moveForward, this._stopMoving, renderer.domElement);
     } else {
       this._canv.addEventListener('mouseup', (e) => this._onMouseUp(e), false);
       this._canv.addEventListener('mousedown', (e) => this._onMouseDown(e), false);
@@ -104,9 +105,9 @@ class OrbitTests {
 
 
     // set initial position and rotation of our objects and lights
-    this._camera.position.z = -2.5;
-    this._camera.position.y = 0;
-    this._camera.position.x = -2.5;
+    this._camera.position.z = -3;
+    this._camera.position.y = 1;
+    this._camera.position.x = -0;
     this._camera.lookAt(this._circle.position);
 
     light.position.set(10, 0, 25);
@@ -125,10 +126,19 @@ class OrbitTests {
     render();
   }
 
-  createCone = () => {
+  _moveForward = () => {
+    console.log(`okay change the color:`, this._player);
+    //this._player.children[0].material.color = 0x00FF00;
+  }
+
+  _stopMoving = () => {
+    //this._player.children[0].material.color = 0xFF0000;
+  }
+
+  createCone = (color, position) => {
     const obj3d = new THREE.Object3D();
     const geometry = new THREE.ConeGeometry(.1, .5, 32);
-    const material = new THREE.MeshBasicMaterial({ color: 0x0000FF });
+    const material = new THREE.MeshBasicMaterial({ color: color });
     const cone = new THREE.Mesh(geometry, material);
     cone.name = "cameraCone";
     //cone.up.set(0, 1, 0);
@@ -136,7 +146,7 @@ class OrbitTests {
     cone.rotation.x += Math.PI / 2;
     obj3d.add(cone);
     this._scene.add(obj3d);
-    obj3d.position.copy(new THREE.Vector3(0, 0, -1));
+    obj3d.position.copy(position);
 
     console.log(`cone:`, cone);
     console.log(`obj3d:`, obj3d);

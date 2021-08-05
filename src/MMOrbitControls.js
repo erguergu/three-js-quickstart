@@ -1,6 +1,7 @@
 import {
 	EventDispatcher,
 	MOUSE,
+	Euler,
 	Quaternion,
 	Spherical,
 	TOUCH,
@@ -21,11 +22,14 @@ const MMOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATEL: 0, DOLLY: 1, ROTATER: 2 
 const MMTOUCH = { ROTATEL: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATEL: 3 };
 
 class MMOrbitControls extends EventDispatcher {
-	constructor( object, domElement ) {
+	constructor( object, player, moveForwardCallback, stopMovingCallback, domElement ) {
 		super();
 		if ( domElement === undefined ) console.warn( 'THREE.OrbitControls: The second parameter "domElement" is now mandatory.' );
 		if ( domElement === document ) console.error( 'THREE.OrbitControls: "document" should not be used as the target "domElement". Please use "renderer.domElement" instead.' );
 		this.object = object;
+		this.player = player;
+		this.moveForwardCallback = moveForwardCallback;
+		this.stopMovingCallback = stopMovingCallback;
 		this.domElement = domElement;
 		this.domElement.style.touchAction = 'none'; // disable touch scroll
 		// Set to false to disable this control
@@ -70,6 +74,8 @@ class MMOrbitControls extends EventDispatcher {
 		this.keys = { LEFT: 'ArrowLeft', UP: 'ArrowUp', RIGHT: 'ArrowRight', BOTTOM: 'ArrowDown' };
 		// Mouse buttons
 		this.mouseButtons = { LEFT: MMOUSE.ROTATEL, MIDDLE: MMOUSE.DOLLY, RIGHT: MMOUSE.ROTATER };
+		this.mouseLDown = false;
+		this.mouseRDown = false;
 		// Touch fingers
 		this.touches = { ONE: MMTOUCH.ROTATEL, TWO: MMTOUCH.DOLLY_PAN };
 		// for reset
@@ -154,18 +160,17 @@ class MMOrbitControls extends EventDispatcher {
 				spherical.radius *= scale;
 				// restrict radius to be between desired limits
 				spherical.radius = Math.max( scope.minDistance, Math.min( scope.maxDistance, spherical.radius ) );
-				console.log(`spherical.radius: ${spherical.radius}`);
-				// move target to panned location
-				if ( scope.enableDamping === true ) {
-					scope.target.addScaledVector( panOffset, scope.dampingFactor );
-				} else {
-					scope.target.add( panOffset );
-				}
+
+				
 				offset.setFromSpherical( spherical );
 				// rotate offset back to "camera-up-vector-is-up" space
 				offset.applyQuaternion( quatInverse );
 				position.copy( scope.target ).add( offset );
 				scope.object.lookAt( scope.target );
+
+				const sphereQuat = new Quaternion().setFromEuler(new Euler(0, sphericalDelta.theta, 0));
+				this.player.applyQuaternion(sphereQuat);
+
 				if ( scope.enableDamping === true ) {
 					sphericalDelta.theta *= ( 1 - scope.dampingFactor );
 					sphericalDelta.phi *= ( 1 - scope.dampingFactor );
@@ -248,14 +253,6 @@ class MMOrbitControls extends EventDispatcher {
 		function rotateUp( angle ) {
 			sphericalDelta.phi -= angle;
 		}
-		const panLeft = function () {
-			const v = new Vector3();
-			return function panLeft( distance, objectMatrix ) {
-				v.setFromMatrixColumn( objectMatrix, 0 ); // get X column of objectMatrix
-				v.multiplyScalar( - distance );
-				panOffset.add( v );
-			};
-		}();
 		const panUp = function () {
 			const v = new Vector3();
 			return function panUp( distance, objectMatrix ) {
@@ -296,12 +293,6 @@ class MMOrbitControls extends EventDispatcher {
 		//
 		function handleMouseDownRotate( event ) {
 			rotateStart.set( event.clientX, event.clientY );
-		}
-		function handleMouseDownDolly( event ) {
-			dollyStart.set( event.clientX, event.clientY );
-		}
-		function handleMouseDownPan( event ) {
-			panStart.set( event.clientX, event.clientY );
 		}
 		function handleMouseMoveRotate( event ) {
 			rotateEnd.set( event.clientX, event.clientY );
@@ -463,12 +454,14 @@ class MMOrbitControls extends EventDispatcher {
 			switch ( event.button ) {
 				case 0:
 					mouseAction = scope.mouseButtons.LEFT;
+					scope.mouseLDown = true;
 					break;
 				case 1:
 					mouseAction = scope.mouseButtons.MIDDLE;
 					break;
 				case 2:
 					mouseAction = scope.mouseButtons.RIGHT;
+					scope.mouseRDown = true;
 					break;
 				default:
 					mouseAction = - 1;
@@ -476,7 +469,7 @@ class MMOrbitControls extends EventDispatcher {
 			switch ( mouseAction ) {
                 case MMOUSE.ROTATER:
                     if ( scope.enablePan === false ) return;
-                    handleMouseDownPan( event );
+                    handleMouseDownRotate( event );
                     state = STATE.ROTATER;
                     break;
 				case MMOUSE.ROTATEL:
@@ -486,6 +479,9 @@ class MMOrbitControls extends EventDispatcher {
 					break;
 				default:
 					state = STATE.NONE;
+			}
+			if (scope.mouseRDown && scope.mouseLDown) {
+				scope.moveForwardCallback();
 			}
 			if ( state !== STATE.NONE ) {
 				scope.dispatchEvent( _startEvent );
@@ -500,12 +496,21 @@ class MMOrbitControls extends EventDispatcher {
 					break;
 				case STATE.ROTATER:
 					if ( scope.enablePan === false ) return;
-					handleMouseMovePan( event );
+					handleMouseMoveRotate( event );
 					break;
 			}
 		}
 		function onMouseUp( event ) {
 			handleMouseUp( event );
+			if (event.button == scope.mouseButtons.LEFT) {
+				scope.mouseLDown = false;
+			}
+			if (event.button == scope.mouseButtons.RIGHT) {
+				scope.mouseRDown = false;
+			}
+			if (!scope.mouseRDown || !scope.mouseLDown) {
+				scope.stopMovingCallback();
+			}
 			scope.dispatchEvent( _endEvent );
 			state = STATE.NONE;
 		}
@@ -624,8 +629,11 @@ class MMOrbitControls extends EventDispatcher {
 		}
 		//
 		scope.domElement.addEventListener( 'contextmenu', onContextMenu );
-		scope.domElement.addEventListener( 'pointerdown', onPointerDown );
-		scope.domElement.addEventListener( 'pointercancel', onPointerCancel );
+		//scope.domElement.addEventListener( 'pointerdown', onPointerDown );
+		//scope.domElement.addEventListener( 'pointercancel', onPointerCancel );
+		scope.domElement.addEventListener("mousedown", onMouseDown);
+		scope.domElement.addEventListener("mouseup", onMouseUp);
+		scope.domElement.addEventListener("mousemove", onMouseMove);
 		scope.domElement.addEventListener( 'wheel', onMouseWheel, { passive: false } );
 		// force an update at start
 		this.update();
