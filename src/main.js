@@ -127,12 +127,13 @@ class OrbitTests {
   }
 
   _moveForward = () => {
-    console.log(`okay change the color:`, this._player);
-    //this._player.children[0].material.color = 0x00FF00;
+    //console.log(`okay change the color:`, this._player.children[0].material);
+    this._player.children[0].material.color.setHex(0x00FF00);
   }
 
   _stopMoving = () => {
     //this._player.children[0].material.color = 0xFF0000;
+    this._player.children[0].material.color.setHex(0xFF0000);
   }
 
   createCone = (color, position) => {
