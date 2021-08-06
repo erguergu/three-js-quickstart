@@ -197,6 +197,25 @@ class MMOrbitControls extends EventDispatcher {
 				// remember current state for next time
 				scope.mouseRWasDown = scope.mouseRDown;
 				scope.mouseLWasDown = scope.mouseLDown;
+				
+				// let's try a simple thing to see how crazy movement gets:
+				
+				if (scope.mouseRDown && scope.mouseLDown) {
+					const forward = new Vector3(0,0,1);
+					forward.applyQuaternion(scope.player.quaternion);
+					forward.normalize();
+					forward.multiplyScalar(.1);
+					const pos = scope.player.position.clone();
+					pos.add(forward);
+
+					scope.player.position.copy(pos);
+					scope.camPlayer.position.copy(pos);
+					scope.object.position.copy(pos);
+				}
+
+				// here's the old pan-related movement code. I think
+				// i want to abandon it perahps....
+				scope.target.add( panOffset );
 
 				if ( scope.enableDamping === true ) {
 					sphericalDelta.theta *= ( 1 - scope.dampingFactor );
