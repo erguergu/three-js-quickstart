@@ -133,7 +133,7 @@ class MMOrbitControls extends EventDispatcher {
 				}
 
 				const position = scope.object.position;
-				offset.copy( position ).sub( scope.target );
+				offset.copy( position ).sub( scope.player.position );
 				// rotate offset to "y-axis-is-up" space
 				offset.applyQuaternion( quat );
 				// angle from z-axis around y-axis
@@ -177,10 +177,10 @@ class MMOrbitControls extends EventDispatcher {
 
 				// rotate offset back to "camera-up-vector-is-up" space
 				offset.applyQuaternion( quatInverse );
-				position.copy( scope.target ).add( offset );
+				position.copy( scope.player.position ).add( offset );
 
 				// then just make sure the camera is pointed at the player
-				scope.object.lookAt( scope.target );
+				scope.object.lookAt( scope.player.position );
 				// test: zero-out the x rotation
 				//scope.object.rotation.x = 0;
 
@@ -198,8 +198,7 @@ class MMOrbitControls extends EventDispatcher {
 				scope.mouseRWasDown = scope.mouseRDown;
 				scope.mouseLWasDown = scope.mouseLDown;
 				
-				// let's try a simple thing to see how crazy movement gets:
-				
+				// let's try a simple thing to see how crazy movement gets:				
 				if (scope.mouseRDown && scope.mouseLDown) {
 					const forward = new Vector3(0,0,1);
 					forward.applyQuaternion(scope.player.quaternion);
@@ -207,10 +206,13 @@ class MMOrbitControls extends EventDispatcher {
 					forward.multiplyScalar(.1);
 					const pos = scope.player.position.clone();
 					pos.add(forward);
+					const moveDelta = pos.clone();
+					moveDelta.sub(scope.player.position);
+					
 
 					scope.player.position.copy(pos);
-					scope.camPlayer.position.copy(pos);
-					scope.object.position.copy(pos);
+					scope.camPlayer.position.add(moveDelta);
+					scope.object.position.add(moveDelta);
 				}
 
 				// here's the old pan-related movement code. I think
