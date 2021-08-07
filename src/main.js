@@ -47,8 +47,6 @@ class OrbitTests {
       space: false,
       shift: false,
     };
-    this._spherical = new THREE.Spherical();
-    this._sphericalDelta = new THREE.Spherical();
 
     // need a scene
     this._scene = new THREE.Scene();
@@ -85,13 +83,13 @@ class OrbitTests {
     // create objects
     //this._rotationController = new THREE.Object3D();
     //this._scene.add(this._rotationController);
-    this._circle = this.createCircle("circle1", 0x00FF00);
+    this._ground = this.createPlane("ground", 0x00FF00);
     //this._cone = this.createCone(0x0000FF, new THREE.Vector3(0, 0, -1));
     this._player = this.createCone(0xFF0000, new THREE.Vector3(0, 0, 0));
     this._playerState = PSTATE.IDLE;
 
     // controls
-    const controls = new MMOrbitControls(this._camera, this._player, this._walkForward, this._walkBackward, this._runForward, this._runBackward, this._stopMoving, renderer.domElement);
+    const controls = new MMOrbitControls(this._camera, this._player, this._walkForward, this._walkBackward, this._runForward, this._runBackward, this._stopMoving, this._groundCheck, this._collisionCheck, renderer.domElement);
 
     // create our lights
     const light = new THREE.AmbientLight(0xFFFFFF, .4);
@@ -102,7 +100,7 @@ class OrbitTests {
     this._camera.position.z = -3;
     this._camera.position.y = 1;
     this._camera.position.x = -0;
-    this._camera.lookAt(this._circle.position);
+    this._camera.lookAt(this._player.position);
 
     light.position.set(10, 0, 25);
 
@@ -131,7 +129,7 @@ class OrbitTests {
   _walkBackward = () => {
     if (this._playerState != PSTATE.WALKBACKWARD) {
       this._playerState = PSTATE.WALKBACKWARD;
-      this._player.children[0].material.color.setHex(0x999999);
+      this._player.children[0].material.color.setHex(0x666666);
     }
   }
 
@@ -156,12 +154,20 @@ class OrbitTests {
     }
   }
 
+  _groundCheck = () => {
+    return true;
+  }
+
+  _collisionCheck = () => {
+    return false;
+  }
+
   createCone = (color, position) => {
     const obj3d = new THREE.Object3D();
     const geometry = new THREE.ConeGeometry(.1, .5, 32);
     const material = new THREE.MeshBasicMaterial({ color: color });
     const cone = new THREE.Mesh(geometry, material);
-    cone.name = "cameraCone";
+    cone.position.y += .125;
     cone.rotation.x += Math.PI / 2;
     obj3d.add(cone);
     this._scene.add(obj3d);
@@ -172,9 +178,9 @@ class OrbitTests {
     return obj3d;
   }
 
-  createCircle = (name, color) => {
+  createPlane = (name, color) => {
 
-    const geometry = new THREE.SphereGeometry(this._spherical.radius, 10, 10);
+    const geometry = new THREE.PlaneGeometry(100, 100, 100, 100);
     const wireframe = new THREE.WireframeGeometry(geometry);
     const line = new THREE.LineSegments(wireframe);
 
@@ -185,6 +191,8 @@ class OrbitTests {
     });
     line.material = material;
     line.name = name;
+    const xAxis = new THREE.Vector3(1, 0, 0);
+    line.rotateOnAxis(xAxis, 0.5 * Math.PI)
 
     this._scene.add(line);
 
