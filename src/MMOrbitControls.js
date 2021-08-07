@@ -27,12 +27,12 @@ class MMOrbitControls extends EventDispatcher {
 		super();
 		if (domElement === undefined) console.warn('THREE.OrbitControls: The second parameter "domElement" is now mandatory.');
 		if (domElement === document) console.error('THREE.OrbitControls: "document" should not be used as the target "domElement". Please use "renderer.domElement" instead.');
+		this.canvas = null;
 		this.object = object;
 		this.player = player;
 		this.camPlayer = new Object3D();
 		this.moveForwardCallback = moveForwardCallback;
 		this.stopMovingCallback = stopMovingCallback;
-		this.movementSpeed = .01;
 		this.domElement = domElement;
 		this.domElement.style.touchAction = 'none'; // disable touch scroll
 		// Set to false to disable this control
@@ -73,17 +73,40 @@ class MMOrbitControls extends EventDispatcher {
 		// If auto-rotate is enabled, you must call controls.update() in your animation loop
 		this.autoRotate = false;
 		this.autoRotateSpeed = 2.0; // 30 seconds per orbit when fps is 60
+
+		// Speed of player movement
+		this.movementSpeed = .05;
+
+		// Speed of rotation if A or D key is pressed.
+		this.keyRotateSpeed = 15.0;
+
 		// The four arrow keys
 		this.keys = { LEFT: 'ArrowLeft', UP: 'ArrowUp', RIGHT: 'ArrowRight', BOTTOM: 'ArrowDown' };
+
 		// Mouse buttons
 		this.mouseButtons = { LEFT: MMOUSE.ROTATEL, MIDDLE: MMOUSE.DOLLY, RIGHT: MMOUSE.ROTATER };
+
 		this.mouseLDown = false;
 		this.mouseRDown = false;
 		this.mouseLWasDown = false;
 		this.mouseRWasDown = false;
+
 		this.forwardKeyDown = false;
 		this.isMovingForward = false;
 		this.wasMovingForward = false;
+
+		this.backKeyDown = false;
+		this.isMovingBackward = false;
+		this.wasMovingBackward = false;
+
+		this.leftKeyDown = false;
+		this.isMovingLeft = false;
+		this.wasMovingLeft = false;
+
+		this.rightKeyDown = false;
+		this.isMovingRight = false;
+		this.wasMovingRight = false;
+
 		// Touch fingers
 		this.touches = { ONE: MMTOUCH.ROTATEL, TWO: MMTOUCH.DOLLY_PAN };
 		// for reset
@@ -126,33 +149,99 @@ class MMOrbitControls extends EventDispatcher {
 			const offset = new Vector3();
 			// so camera.up is the orbit axis
 			const quat = new Quaternion().setFromUnitVectors(object.up, new Vector3(0, 1, 0));
-			console.log(`quat:`, quat);
 			const quatInverse = quat.clone().invert();
 			const lastPosition = new Vector3();
 			const lastQuaternion = new Quaternion();
 			const twoPI = 2 * Math.PI;
 			return function update() {
 
+				// Figure out if we are moving and in what direction
+				const mouseForward = scope.mouseRDown && scope.mouseLDown;
+				if (mouseForward || scope.forwardKeyDown) {
+					scope.isMovingForward = true;
+				} else {
+					scope.isMovingForward = false;
+				}
+				if (scope.backKeyDown) {
+					scope.isMovingBackward = true;
+				} else {
+					scope.isMovingBackward = false;
+				}
+				if (scope.leftKeyDown) {
+					scope.isMovingLeft = true;
+				} else {
+					scope.isMovingLeft = false;
+				}
+				if (scope.rightKeyDown) {
+					scope.isMovingRight  = true;
+				} else {
+					scope.isMovingRight = false;
+				}
+
+				// Cancel out movement if both both opposite directions at the same time.
+				if (scope.isMovingForward && scope.isMovingBackward) {
+					scope.isMovingBackward = false;
+					scope.isMovingBackward = false;
+				}
+				if (scope.isMovingLeft && scope.isMovingRight) {
+					scope.isMovingLeft = false;
+					scope.isMovingRight = false;
+				}
+
+				// Align the player rotation to the camera rotation
+				// if we just pressed RMouse after free rotating
 				if (scope.mouseRDown && !scope.mouseRWasDown) {
 					scope.player.quaternion.copy(scope.camPlayer.quaternion);
 				}
 
+				// Do keyboard rotation if RMouse is not down
+				// and A or D is down.
+				if ((scope.leftKeyDown || scope.rightKeyDown) && !(scope.leftKeyDown && scope.rightKeyDown)) {
+
+					if (!scope.mouseRDown) {
+
+						// Keyboard Rotate
+
+						const rotDir = scope.leftKeyDown ? 1 : -1;
+						const rotReverse = scope.isMovingBackward ? -1 : 1;
+						const playerAngle = rotReverse * rotDir * getKeyboardRotationAngle();
+						if (!scope.mouseLDown) {
+							sphericalDelta.theta = playerAngle;
+						}
+						const playerQuat = new Quaternion().setFromEuler(new Euler(0, playerAngle, 0));
+						this.player.applyQuaternion(playerQuat);
+					} else if (scope.mouseRDown) {
+
+						// Strafe
+
+						// okay gotta think... if the player just started doing one of four things
+						// then we need to snap rotation to one of the following values:
+						// -90, -45, 45, 90
+						// Also if the player just stopped doing one of four things, we need to snap
+						// to 0
+						if (scope.isMovingForward && !scope.wasMovingForward) {
+						}						
+					}
+				}
+				
+
+				// Get Camera position
 				const position = scope.object.position;
+
+				// Calculate offset between where player is and where camera is
 				offset.copy(position).sub(scope.player.position);
+
 				// rotate offset to "y-axis-is-up" space
 				offset.applyQuaternion(quat);
+
 				// angle from z-axis around y-axis
+				// I don't understand this...
 				spherical.setFromVector3(offset);
-				if (scope.autoRotate && state === STATE.NONE) {
-					rotateLeft(getAutoRotationAngle());
-				}
-				if (scope.enableDamping) {
-					spherical.theta += sphericalDelta.theta * scope.dampingFactor;
-					spherical.phi += sphericalDelta.phi * scope.dampingFactor;
-				} else {
-					spherical.theta += sphericalDelta.theta;
-					spherical.phi += sphericalDelta.phi;
-				}
+
+				// Calculate camera rotation
+				spherical.theta += sphericalDelta.theta;
+				spherical.phi += sphericalDelta.phi;
+
 				// restrict theta to be between desired limits
 				let min = scope.minAzimuthAngle;
 				let max = scope.maxAzimuthAngle;
@@ -196,33 +285,20 @@ class MMOrbitControls extends EventDispatcher {
 					this.player.applyQuaternion(sphereQuat);
 				}
 
-				// remember current state for next time
-				scope.mouseRWasDown = scope.mouseRDown;
-				scope.mouseLWasDown = scope.mouseLDown;
-
-				
-				// Figure out if we are moving forward
-				const mouseForward = scope.mouseRDown && scope.mouseLDown;
-				const keyForward = scope.forwardKeyDown;
-				if (mouseForward || keyForward) {
-					scope.isMovingForward = true;
-				} else {
-					scope.isMovingForward = false;
-				}
-
+				// Call any callbacks for state changes
 				if (scope.isMovingForward && !scope.wasMovingForward) {
 					scope.moveForwardCallback();
 				}
 				if (!scope.isMovingForward && scope.wasMovingForward) {
 					scope.stopMovingCallback();
 				}
-				scope.wasMovingForward = scope.isMovingForward;
 
-				if (scope.isMovingForward) {
+				if (scope.isMovingForward || scope.isMovingBackward) {
+					const forwardBackward = scope.isMovingForward ? 1 : -1;
 					const forward = new Vector3(0, 0, 1);
 					forward.applyQuaternion(scope.player.quaternion);
 					forward.normalize();
-					forward.multiplyScalar(scope.movementSpeed);
+					forward.multiplyScalar(forwardBackward * scope.movementSpeed);
 					const pos = scope.player.position.clone();
 					pos.add(forward);
 					const moveDelta = pos.clone();
@@ -233,6 +309,15 @@ class MMOrbitControls extends EventDispatcher {
 					scope.camPlayer.position.copy(scope.player.position);
 					scope.object.position.add(moveDelta);
 				}
+
+
+				// remember current state for next time
+				scope.mouseRWasDown = scope.mouseRDown;
+				scope.mouseLWasDown = scope.mouseLDown;
+				scope.wasMovingForward = scope.isMovingForward;
+				scope.wasMovingLeft = scope.isMovingLeft;
+				scope.wasMovingBackward = scope.isMovingBackward;
+				scope.wasMovingRight = scope.isMovingRight;
 
 				sphericalDelta.set(0, 0, 0);
 				scale = 1;
@@ -286,9 +371,11 @@ class MMOrbitControls extends EventDispatcher {
 		const dollyDelta = new Vector2();
 		const pointers = [];
 		const pointerPositions = {};
-		function getAutoRotationAngle() {
-			return 2 * Math.PI / 60 / 60 * scope.autoRotateSpeed;
+
+		function getKeyboardRotationAngle() {
+			return 2 * Math.PI / 60 / 60 * scope.keyRotateSpeed;
 		}
+
 		function getZoomScale() {
 			return Math.pow(0.95, scope.zoomSpeed);
 		}
@@ -375,15 +462,37 @@ class MMOrbitControls extends EventDispatcher {
 
 		function handleKeyDown(event) {
 			event.preventDefault();
-			if (event.code == "KeyW") {
-				scope.forwardKeyDown = true;
+			switch (event.code) {
+				case "KeyW":
+					scope.forwardKeyDown = true;
+					break;
+				case "KeyA":
+					scope.leftKeyDown = true;
+					break;
+				case "KeyS":
+					scope.backKeyDown = true;
+					break;
+				case "KeyD":
+					scope.rightKeyDown = true;
+					break;
 			}
 		}
 
 		function handleKeyUp(event) {
 			event.preventDefault();
-			if (event.code == "KeyW") {
-				scope.forwardKeyDown = false;
+			switch (event.code) {
+				case "KeyW":
+					scope.forwardKeyDown = false;
+					break;
+				case "KeyA":
+					scope.leftKeyDown = false;
+					break;
+				case "KeyS":
+					scope.backKeyDown = false;
+					break;
+				case "KeyD":
+					scope.rightKeyDown = false;
+					break;
 			}
 		}
 
@@ -483,6 +592,9 @@ class MMOrbitControls extends EventDispatcher {
 			removePointer(event);
 		}
 		function onMouseDown(event) {
+			if (scope.canvas) {
+				//scope.canvas.requestPointerLock();
+			}
 			let mouseAction;
 			switch (event.button) {
 				case 0:
@@ -537,8 +649,8 @@ class MMOrbitControls extends EventDispatcher {
 			}
 			if (event.button == scope.mouseButtons.RIGHT) {
 				scope.mouseRDown = false;
-			}		
-			
+			}
+
 			// for some reason we still need this. STATE does something still......
 			if (!scope.mouseRDown && !scope.mouseLDown) {
 				state = STATE.NONE;
@@ -551,12 +663,12 @@ class MMOrbitControls extends EventDispatcher {
 			handleMouseWheel(event);
 			scope.dispatchEvent(_endEvent);
 		}
-		
+
 		function onKeyDown(event) {
 			if (scope.enabled === false || scope.enablePan === false) return;
 			handleKeyDown(event);
 		}
-		
+
 		function onKeyUp(event) {
 			if (scope.enabled === false || scope.enablePan === false) return;
 			handleKeyUp(event);
@@ -664,13 +776,21 @@ class MMOrbitControls extends EventDispatcher {
 			const pointer = (event.pointerId === pointers[0].pointerId) ? pointers[1] : pointers[0];
 			return pointerPositions[pointer.pointerId];
 		}
-		//
-		scope.domElement.addEventListener('contextmenu', onContextMenu);
-		//scope.domElement.addEventListener( 'pointerdown', onPointerDown );
-		//scope.domElement.addEventListener( 'pointercancel', onPointerCancel );
-		scope.domElement.addEventListener("mousedown", onMouseDown);
-		scope.domElement.addEventListener("mouseup", onMouseUp);
-		scope.domElement.addEventListener("mousemove", onMouseMove);
+
+
+
+		if (scope.canvas == null) {
+			let canvases = document.getElementsByTagName('canvas');
+			if (canvases.length) {
+				scope.canvas = canvases[0];
+			} else {
+				console.log(`found no canvas...`);
+			}
+		}
+		scope.canvas.addEventListener('contextmenu', onContextMenu);
+		scope.canvas.addEventListener("mousedown", onMouseDown);
+		scope.canvas.addEventListener("mouseup", onMouseUp);
+		scope.canvas.addEventListener("mousemove", onMouseMove);
 		scope.domElement.addEventListener('wheel', onMouseWheel, { passive: false });
 		document.addEventListener('keydown', onKeyDown);
 		document.addEventListener('keyup', onKeyUp);

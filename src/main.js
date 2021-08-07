@@ -57,7 +57,7 @@ class OrbitTests {
 
     // antialias gets rid of the jaggies
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    this._canv = document.getElementById('threejs');
+    this._canv = document.getElementById('maindiv');
 
 
     // black background
@@ -67,7 +67,7 @@ class OrbitTests {
     renderer.setSize(window.innerWidth, window.innerHeight);
 
     // need to add this to the DOM
-    document.body.appendChild(renderer.domElement);
+    document.getElementById('maindiv').appendChild(renderer.domElement);
 
     // listen for window resize events
     window.addEventListener('resize', () => {
