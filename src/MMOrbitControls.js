@@ -23,7 +23,7 @@ const MMOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATEL: 0, DOLLY: 1, ROTATER: 2 
 const MMTOUCH = { ROTATEL: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATEL: 3 };
 
 class MMOrbitControls extends EventDispatcher {
-	constructor(object, player, moveForwardCallback, moveBackwardCallback, stopMovingCallback, domElement) {
+	constructor(object, player, walkForwardCallback, walkBackwardCallback, runForwardCallback, runBackwardCallback, stopMovingCallback, domElement) {
 		super();
 		if (domElement === undefined) console.warn('THREE.OrbitControls: The second parameter "domElement" is now mandatory.');
 		if (domElement === document) console.error('THREE.OrbitControls: "document" should not be used as the target "domElement". Please use "renderer.domElement" instead.');
@@ -31,8 +31,10 @@ class MMOrbitControls extends EventDispatcher {
 		this.object = object;
 		this.player = player;
 		this.camPlayer = new Object3D();
-		this.moveForwardCallback = moveForwardCallback;
-		this.moveBackwardCallback = moveBackwardCallback;
+		this.walkForwardCallback = walkForwardCallback;
+		this.walkBackwardCallback = walkBackwardCallback;
+		this.runForwardCallback = runForwardCallback;
+		this.runBackwardCallback = runBackwardCallback;
 		this.stopMovingCallback = stopMovingCallback;
 		this.domElement = domElement;
 		this.domElement.style.touchAction = 'none'; // disable touch scroll
@@ -76,7 +78,8 @@ class MMOrbitControls extends EventDispatcher {
 		this.autoRotateSpeed = 2.0; // 30 seconds per orbit when fps is 60
 
 		// Speed of player movement
-		this.movementSpeed = .05;
+		this.walkSpeed = 0.05;
+		this.runSpeed = 0.1;
 
 		// Speed of rotation if A or D key is pressed.
 		this.keyRotateSpeed = 15.0;
@@ -301,9 +304,10 @@ class MMOrbitControls extends EventDispatcher {
 				if (isMovingForwardOrStrafingForward || scope.isMovingBackward) {
 					const forwardBackward = isMovingForwardOrStrafingForward ? 1 : -1;
 					const forward = new Vector3(0, 0, 1);
+					const walkOrRunSpeed = scope.shiftKeyDown ? scope.runSpeed : scope.walkSpeed;
 					forward.applyQuaternion(scope.player.quaternion);
 					forward.normalize();
-					forward.multiplyScalar(forwardBackward * scope.movementSpeed);
+					forward.multiplyScalar(forwardBackward * walkOrRunSpeed);
 					const pos = scope.player.position.clone();
 					pos.add(forward);
 					const moveDelta = pos.clone();
@@ -314,9 +318,17 @@ class MMOrbitControls extends EventDispatcher {
 					scope.camPlayer.position.copy(scope.player.position);
 					scope.object.position.add(moveDelta);
 					if (isMovingForwardOrStrafingForward) {
-						scope.moveForwardCallback();
+						if (scope.shiftKeyDown) {
+							scope.runForwardCallback();
+						} else {
+							scope.walkForwardCallback();
+						}
 					} else {
-						scope.moveBackwardCallback();
+						if (scope.shiftKeyDown) {
+							scope.runBackwardCallback();
+						} else {
+							scope.runBackwardCallback();
+						}
 					}					
 				} else {
 					scope.stopMovingCallback();
@@ -476,6 +488,10 @@ class MMOrbitControls extends EventDispatcher {
 		function handleKeyDown(event) {
 			event.preventDefault();
 			switch (event.code) {
+				case "ShiftLeft":
+				case "ShiftRight":
+					scope.shiftKeyDown = true;
+					break;
 				case "KeyW":
 					scope.forwardKeyDown = true;
 					break;
@@ -494,6 +510,10 @@ class MMOrbitControls extends EventDispatcher {
 		function handleKeyUp(event) {
 			event.preventDefault();
 			switch (event.code) {
+				case "ShiftLeft":
+				case "ShiftRight":
+					scope.shiftKeyDown = false;
+					break;
 				case "KeyW":
 					scope.forwardKeyDown = false;
 					break;

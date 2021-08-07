@@ -86,12 +86,12 @@ class OrbitTests {
     //this._rotationController = new THREE.Object3D();
     //this._scene.add(this._rotationController);
     this._circle = this.createCircle("circle1", 0x00FF00);
-    this._cone = this.createCone(0x0000FF, new THREE.Vector3(0, 0, -1));
+    //this._cone = this.createCone(0x0000FF, new THREE.Vector3(0, 0, -1));
     this._player = this.createCone(0xFF0000, new THREE.Vector3(0, 0, 0));
     this._playerState = PSTATE.IDLE;
 
     // controls
-    const controls = new MMOrbitControls(this._cone, this._player, this._moveForward, this._moveBackward, this._stopMoving, renderer.domElement);
+    const controls = new MMOrbitControls(this._camera, this._player, this._walkForward, this._walkBackward, this._runForward, this._runBackward, this._stopMoving, renderer.domElement);
 
     // create our lights
     const light = new THREE.AmbientLight(0xFFFFFF, .4);
@@ -121,14 +121,28 @@ class OrbitTests {
     render();
   }
 
-  _moveForward = () => {
+  _walkForward = () => {
+    if (this._playerState != PSTATE.WALKFORWARD) {
+      this._playerState = PSTATE.WALKFORWARD;
+      this._player.children[0].material.color.setHex(0x00AA00);
+    }
+  }
+
+  _walkBackward = () => {
+    if (this._playerState != PSTATE.WALKBACKWARD) {
+      this._playerState = PSTATE.WALKBACKWARD;
+      this._player.children[0].material.color.setHex(0x999999);
+    }
+  }
+
+  _runForward = () => {
     if (this._playerState != PSTATE.RUNFORWARD) {
       this._playerState = PSTATE.RUNFORWARD;
       this._player.children[0].material.color.setHex(0x00FF00);
     }
   }
 
-  _moveBackward = () => {
+  _runBackward = () => {
     if (this._playerState != PSTATE.RUNBACKWARD) {
       this._playerState = PSTATE.RUNBACKWARD;
       this._player.children[0].material.color.setHex(0xDDDDDD);
