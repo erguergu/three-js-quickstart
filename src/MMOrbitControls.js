@@ -107,6 +107,9 @@ class MMOrbitControls extends EventDispatcher {
 		this.isMovingRight = false;
 		this.wasMovingRight = false;
 
+		this.isStrafing = false;
+		this.wasStrafing = false;
+
 		// Touch fingers
 		this.touches = { ONE: MMTOUCH.ROTATEL, TWO: MMTOUCH.DOLLY_PAN };
 		// for reset
@@ -142,8 +145,8 @@ class MMOrbitControls extends EventDispatcher {
 			//TRYRENDERscope.update();
 			state = STATE.NONE;
 		};
-		// this method is exposed, but perhaps it would be better if we can make it private...
-		// No, I don't think it would. I think I need to call this method on each frame.
+
+		// It is a good thing that this method is public because we need to call this method on each frame.
 		this.update = function () {
 
 			const offset = new Vector3();
@@ -178,6 +181,8 @@ class MMOrbitControls extends EventDispatcher {
 					scope.isMovingRight = false;
 				}
 
+				scope.isStrafing = (scope.isMovingRight || scope.isMovingLeft) && scope.mouseRDown;
+
 				// Cancel out movement if both both opposite directions at the same time.
 				if (scope.isMovingForward && scope.isMovingBackward) {
 					scope.isMovingBackward = false;
@@ -189,8 +194,11 @@ class MMOrbitControls extends EventDispatcher {
 				}
 
 				// Align the player rotation to the camera rotation
-				// if we just pressed RMouse after free rotating
-				if (scope.mouseRDown && !scope.mouseRWasDown) {
+				// if we just pressed RMouse after free rotating.
+				// Even if we are strafing, reset player to camera first.
+				const justStoppedStrafing = !scope.isStrafing && scope.wasStrafing;
+				const justStartedFollowCam = scope.mouseRDown && !scope.mouseRWasDown;				
+				if (justStartedFollowCam || justStoppedStrafing) {
 					scope.player.quaternion.copy(scope.camPlayer.quaternion);
 				}
 
@@ -212,15 +220,18 @@ class MMOrbitControls extends EventDispatcher {
 						this.player.applyQuaternion(playerQuat);
 					} else if (scope.mouseRDown) {
 
-						// Strafe
+						// If we get here, it means we are strafing. Need to handle the
+						// FIRST frame of strafing (or the first frame of a change from strfing only
+						// to strafing and moving forward).
+						const justStartedStrafing = (scope.isStrafing && !scope.wasStrafing) || (scope.isMovingBackward != scope.wasMovingBackward) || (scope.isMovingForward != scope.wasMovingForward);
+						if (justStartedStrafing) {
+							const leftRightMod = scope.isMovingLeft ? 90.0 : -90.0;
+							const forwardBackwardMod = (scope.isMovingForward || scope.isMovingBackward) ? 0.5 : 1.0;
+							const backwardMod = scope.isMovingBackward ? -1.0 : 1.0;
+							const angle = 2 * Math.PI * ((leftRightMod * forwardBackwardMod * backwardMod) / 360);
 
-						// okay gotta think... if the player just started doing one of four things
-						// then we need to snap rotation to one of the following values:
-						// -90, -45, 45, 90
-						// Also if the player just stopped doing one of four things, we need to snap
-						// to 0
-						if (scope.isMovingForward && !scope.wasMovingForward) {
-						}						
+							scope.player.rotateY(angle);
+						}
 					}
 				}
 				
@@ -293,8 +304,9 @@ class MMOrbitControls extends EventDispatcher {
 					scope.stopMovingCallback();
 				}
 
-				if (scope.isMovingForward || scope.isMovingBackward) {
-					const forwardBackward = scope.isMovingForward ? 1 : -1;
+				const isMovingForwardOrStrafingForward = scope.isMovingForward || (scope.isStrafing && !scope.isMovingBackward);
+				if (isMovingForwardOrStrafingForward || scope.isMovingBackward) {
+					const forwardBackward = isMovingForwardOrStrafingForward ? 1 : -1;
 					const forward = new Vector3(0, 0, 1);
 					forward.applyQuaternion(scope.player.quaternion);
 					forward.normalize();
@@ -318,6 +330,7 @@ class MMOrbitControls extends EventDispatcher {
 				scope.wasMovingLeft = scope.isMovingLeft;
 				scope.wasMovingBackward = scope.isMovingBackward;
 				scope.wasMovingRight = scope.isMovingRight;
+				scope.wasStrafing = scope.isStrafing;
 
 				sphericalDelta.set(0, 0, 0);
 				scale = 1;
