@@ -23,7 +23,7 @@ const MMOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATEL: 0, DOLLY: 1, ROTATER: 2 
 const MMTOUCH = { ROTATEL: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATEL: 3 };
 
 class MMOrbitControls extends EventDispatcher {
-	constructor(object, player, moveForwardCallback, stopMovingCallback, domElement) {
+	constructor(object, player, moveForwardCallback, moveBackwardCallback, stopMovingCallback, domElement) {
 		super();
 		if (domElement === undefined) console.warn('THREE.OrbitControls: The second parameter "domElement" is now mandatory.');
 		if (domElement === document) console.error('THREE.OrbitControls: "document" should not be used as the target "domElement". Please use "renderer.domElement" instead.');
@@ -32,6 +32,7 @@ class MMOrbitControls extends EventDispatcher {
 		this.player = player;
 		this.camPlayer = new Object3D();
 		this.moveForwardCallback = moveForwardCallback;
+		this.moveBackwardCallback = moveBackwardCallback;
 		this.stopMovingCallback = stopMovingCallback;
 		this.domElement = domElement;
 		this.domElement.style.touchAction = 'none'; // disable touch scroll
@@ -146,7 +147,7 @@ class MMOrbitControls extends EventDispatcher {
 			state = STATE.NONE;
 		};
 
-		// It is a good thing that this method is public because we need to call this method on each frame.
+		// It is a good thing that this method is public because we need to call it on each frame.
 		this.update = function () {
 
 			const offset = new Vector3();
@@ -296,14 +297,6 @@ class MMOrbitControls extends EventDispatcher {
 					this.player.applyQuaternion(sphereQuat);
 				}
 
-				// Call any callbacks for state changes
-				if (scope.isMovingForward && !scope.wasMovingForward) {
-					scope.moveForwardCallback();
-				}
-				if (!scope.isMovingForward && scope.wasMovingForward) {
-					scope.stopMovingCallback();
-				}
-
 				const isMovingForwardOrStrafingForward = scope.isMovingForward || (scope.isStrafing && !scope.isMovingBackward);
 				if (isMovingForwardOrStrafingForward || scope.isMovingBackward) {
 					const forwardBackward = isMovingForwardOrStrafingForward ? 1 : -1;
@@ -320,6 +313,13 @@ class MMOrbitControls extends EventDispatcher {
 					scope.player.position.copy(pos);
 					scope.camPlayer.position.copy(scope.player.position);
 					scope.object.position.add(moveDelta);
+					if (isMovingForwardOrStrafingForward) {
+						scope.moveForwardCallback();
+					} else {
+						scope.moveBackwardCallback();
+					}					
+				} else {
+					scope.stopMovingCallback();
 				}
 
 

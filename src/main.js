@@ -3,6 +3,8 @@
 import { MMOrbitControls } from './MMOrbitControls.js';
 import * as THREE from './three.module.js';
 
+const PSTATE = { IDLE: "Idle", WALKFORWARD: "WalkForward", RUNFORWARD: "RunForward", WALKBACKWARD: 'WalkBackward', RUNBACKWARD: 'RunBackward' };
+
 class OrbitTests {
 
   constructor() {
@@ -86,9 +88,10 @@ class OrbitTests {
     this._circle = this.createCircle("circle1", 0x00FF00);
     this._cone = this.createCone(0x0000FF, new THREE.Vector3(0, 0, -1));
     this._player = this.createCone(0xFF0000, new THREE.Vector3(0, 0, 0));
+    this._playerState = PSTATE.IDLE;
 
     // controls
-    const controls = new MMOrbitControls(this._cone, this._player, this._moveForward, this._stopMoving, renderer.domElement);
+    const controls = new MMOrbitControls(this._cone, this._player, this._moveForward, this._moveBackward, this._stopMoving, renderer.domElement);
 
     // create our lights
     const light = new THREE.AmbientLight(0xFFFFFF, .4);
@@ -119,11 +122,24 @@ class OrbitTests {
   }
 
   _moveForward = () => {
-    this._player.children[0].material.color.setHex(0x00FF00);
+    if (this._playerState != PSTATE.RUNFORWARD) {
+      this._playerState = PSTATE.RUNFORWARD;
+      this._player.children[0].material.color.setHex(0x00FF00);
+    }
+  }
+
+  _moveBackward = () => {
+    if (this._playerState != PSTATE.RUNBACKWARD) {
+      this._playerState = PSTATE.RUNBACKWARD;
+      this._player.children[0].material.color.setHex(0xDDDDDD);
+    }
   }
 
   _stopMoving = () => {
-    this._player.children[0].material.color.setHex(0xFF0000);
+    if (this._playerState != PSTATE.IDLE) {
+      this._playerState = PSTATE.IDLE;
+      this._player.children[0].material.color.setHex(0xFF0000);
+    }
   }
 
   createCone = (color, position) => {
