@@ -13,43 +13,15 @@ class OrbitTests {
 
   _Initialize() {
 
-		this._rotateStart = new THREE.Vector2();
-		this._rotateEnd = new THREE.Vector2();
-		this._rotateDelta = new THREE.Vector2();
-
-    this._offset = new THREE.Vector3();
-    const upVector = new THREE.Vector3( 0, 1, 0 );
-    this._quat = new THREE.Quaternion().setFromUnitVectors( upVector, new THREE.Vector3( 0, 1, 0 ) );
-    console.log(`quat:`, this._quat);
-    this._quatInverse = this._quat.clone().invert();
-
-    this._lastPosition = new THREE.Vector3();
-    this._lastQuaternion = new THREE.Quaternion();
-    this._twoPI = 2 * Math.PI;
-
-    this._scale = 1;
-    this._minDistance = 1;
-    this._maxDistance = 100;
-
-    // init mouse input
-    this._rotateSpeed = 1.0;
-    this._mouseMovementX = 0;
-    this._mouseMovementY = 0;
-    this._mouseDownLeft = false;
-    this._mouseDownRight = false;
-    this._wheelDelta = 0;
-    this._keys = {
-      mouseforward: false,
-      forward: false,
-      backward: false,
-      left: false,
-      right: false,
-      space: false,
-      shift: false,
-    };
-
     // need a scene
     this._scene = new THREE.Scene();
+
+    // clock for physics
+    this._clock = new THREE.Clock();
+
+    // physics
+    this._physicsWorld = null;
+    this._rigidBodies = [];
 
     // camera aspect ratio starts out matching viewport aspect ratio
     this._camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
@@ -89,7 +61,7 @@ class OrbitTests {
     this._playerState = PSTATE.IDLE;
 
     // controls
-    const controls = new MMOrbitControls(this._camera, this._player, this._walkForward, this._walkBackward, this._runForward, this._runBackward, this._stopMoving, this._groundCheck, this._collisionCheck, renderer.domElement);
+    const controls = new MMOrbitControls(this._camera, this._player, this._movePlayerCallback, this._walkForward, this._walkBackward, this._runForward, this._runBackward, this._stopMoving, this._groundCheck, this._collisionCheck, renderer.domElement);
 
     // create our lights
     const light = new THREE.AmbientLight(0xFFFFFF, .4);
@@ -112,11 +84,17 @@ class OrbitTests {
     this._scene.add(light);
 
     var render = () => {
+      let deltaTime = this._clock.getDelta();
       requestAnimationFrame(render);
-      controls.update();
+      controls.update(deltaTime);
       renderer.render(this._scene, this._camera);
     };
     render();
+  }
+
+  _movePlayerCallback = (moveDelta) => {
+    this._player.position.add(moveDelta);
+    return moveDelta;
   }
 
   _walkForward = () => {
@@ -185,9 +163,9 @@ class OrbitTests {
     const line = new THREE.LineSegments(wireframe);
 
     const material = new THREE.LineBasicMaterial({
-        color: color,        
-        opacity: 0.25,
-        transparent: true
+      color: color,
+      opacity: 0.25,
+      transparent: true
     });
     line.material = material;
     line.name = name;
@@ -201,11 +179,48 @@ class OrbitTests {
     return line;
   }
 
+  setupPhysicsWorld = () => {
+
+    const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration(),
+      dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration),
+      overlappingPairCache = new Ammo.btDbvtBroadphase(),
+      solver = new Ammo.btSequentialImpulseConstraintSolver();
+
+    this._physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
+    this._physicsWorld.setGravity(new Ammo.btVector3(0, -10, 0));
+
+  }
+
+  updatePhysics = (deltaTime) => {
+
+    // Step world
+    this._physicsWorld.stepSimulation(deltaTime, 10);
+
+    // Update rigid bodies
+    for (let i = 0; i < this._rigidBodies.length; i++) {
+      let objThree = rigidBodies[i];
+      let objAmmo = objThree.userData.physicsBody;
+      let ms = objAmmo.getMotionState();
+      if (ms) {
+
+        ms.getWorldTransform(tmpTrans);
+        let p = tmpTrans.getOrigin();
+        let q = tmpTrans.getRotation();
+        objThree.position.set(p.x(), p.y(), p.z());
+        objThree.quaternion.set(q.x(), q.y(), q.z(), q.w());
+
+      }
+    }
+
+  }
+
 }
 
 let _APP = null;
 
 window.addEventListener('DOMContentLoaded', () => {
-  _APP = new OrbitTests();
+  Ammo().then(() => {
+    _APP = new OrbitTests();
+  })
 });
 

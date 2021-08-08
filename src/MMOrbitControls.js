@@ -23,7 +23,7 @@ const MMOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATEL: 0, DOLLY: 1, ROTATER: 2 
 const MMTOUCH = { ROTATEL: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATEL: 3 };
 
 class MMOrbitControls extends EventDispatcher {
-	constructor(object, player, walkForwardCallback, walkBackwardCallback, runForwardCallback, runBackwardCallback, stopMovingCallback, groundCheck, collisionCheck, domElement) {
+	constructor(object, player, movePlayerCallback, walkForwardCallback, walkBackwardCallback, runForwardCallback, runBackwardCallback, stopMovingCallback, groundCheck, collisionCheck, domElement) {
 		super();
 		if (domElement === undefined) console.warn('THREE.OrbitControls: The second parameter "domElement" is now mandatory.');
 		if (domElement === document) console.error('THREE.OrbitControls: "document" should not be used as the target "domElement". Please use "renderer.domElement" instead.');
@@ -31,6 +31,7 @@ class MMOrbitControls extends EventDispatcher {
 		this.object = object;
 		this.player = player;
 		this.camPlayer = new Object3D();
+		this.movePlayerCallback = movePlayerCallback;
 		this.walkForwardCallback = walkForwardCallback;
 		this.walkBackwardCallback = walkBackwardCallback;
 		this.runForwardCallback = runForwardCallback;
@@ -82,9 +83,6 @@ class MMOrbitControls extends EventDispatcher {
 		// Speed of player movement
 		this.walkSpeed = 0.05;
 		this.runSpeed = 0.1;
-		this.groundAccel = .1;
-		this.airAccel = .02;
-		this.currentSpeed = 0;
 
 		// Speed of rotation if A or D key is pressed.
 		this.keyRotateSpeed = 15.0;
@@ -156,7 +154,7 @@ class MMOrbitControls extends EventDispatcher {
 		};
 
 		// It is a good thing that this method is public because we need to call it on each frame.
-		this.update = function () {
+		this.update = function (deltaTime) {
 
 			const offset = new Vector3();
 			// so camera.up is the orbit axis
@@ -165,7 +163,9 @@ class MMOrbitControls extends EventDispatcher {
 			const lastPosition = new Vector3();
 			const lastQuaternion = new Quaternion();
 			const twoPI = 2 * Math.PI;
-			return function update() {
+			return function update(deltaTime) {
+
+				//console.log(`Just for fun, deltaTime is ${deltaTime}`);
 
 				// Figure out if we are moving and in what direction
 				const mouseForward = scope.mouseRDown && scope.mouseLDown;
@@ -306,33 +306,36 @@ class MMOrbitControls extends EventDispatcher {
 				}
 
 				const isMovingForwardOrStrafingForward = scope.isMovingForward || (scope.isStrafing && !scope.isMovingBackward);
-				if (isMovingForwardOrStrafingForward || scope.isMovingBackward || scope.currentSpeed > 0) {
+				if (isMovingForwardOrStrafingForward || scope.isMovingBackward) {
 					const forwardBackward = isMovingForwardOrStrafingForward ? 1 : -1;
 					const forward = new Vector3(0, 0, 1);
 					const walkOrRunSpeed = scope.shiftKeyDown ? scope.runSpeed : scope.walkSpeed;
 
-					if (isMovingForwardOrStrafingForward || scope.isMovingBackward) {
-						if (scope.currentSpeed < walkOrRunSpeed) {
-							// we are not at speed yet, so multiply current speed + .0001 by the accel factor
-							scope.currentSpeed = Math.min(walkOrRunSpeed, (scope.currentSpeed + .0001) * (1 + scope.groundAccel));
-						}
-					} else {
-						console.log(`Does this fire?`);
-						scope.currentSpeed = Math.max(0, (scope.currentSpeed) * (walkOrRunSpeed * scope.groundAccel));
-					}
-
 					forward.applyQuaternion(scope.player.quaternion);
 					forward.normalize();
-					forward.multiplyScalar(forwardBackward * scope.currentSpeed);
+					forward.multiplyScalar(forwardBackward * walkOrRunSpeed);
 					const pos = scope.player.position.clone();
 					pos.add(forward);
 					const moveDelta = pos.clone();
+					
+					// figure out how much we are moving
 					moveDelta.sub(scope.player.position);
+					let actualPlayerMovement = moveDelta.clone();
+
+					if (scope.movePlayerCallback) {
+						// Make the callback handle actual movement once we know how much
+						// we intend to move the player.
+						actualPlayerMovement = scope.movePlayerCallback(moveDelta);
+					} else {
+						// Move the player directly
+						//scope.player.position.add(moveDelta);
+					}
 
 
-					scope.player.position.copy(pos);
+					// Apply actual player movement delta to camera and the cheater 'camera player'
 					scope.camPlayer.position.copy(scope.player.position);
 					scope.object.position.add(moveDelta);
+
 					if (isMovingForwardOrStrafingForward) {
 						if (scope.shiftKeyDown) {
 							scope.runForwardCallback();
