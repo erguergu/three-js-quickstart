@@ -104,15 +104,20 @@ class OrbitTests {
     // this._player.obj3d.position.add(moveDelta);
     // return moveDelta;
 
+    // int numManifolds = world->getDispatcher()->getNumManifolds();
+    // printf("numManifolds = %d\n",numManifolds);
+
+    const numMan = this._physicsWorld.getDispatcher().getNumManifolds();
+    if (numMan == 0) {
+      return;
+    }
+
     const scalingFactor = 60;
     const resultantImpulse = new Ammo.btVector3(moveDelta.x, moveDelta.y, moveDelta.z)
     resultantImpulse.op_mul(scalingFactor);
-    //console.log(`resultantImpulse`, resultantImpulse);
 
     const body = this._player.physicsBody;
-    //console.log(`physicsBody before: `, body);
     body.setLinearVelocity(resultantImpulse);
-    //console.log(`physicsBody after: `, body);
 
   }
 
@@ -190,7 +195,8 @@ class OrbitTests {
     body.setFriction(.4);
     body.setRollingFriction(.10);
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
-    //body.setAngularFactor( 0, 0, 0 );
+    // body.setAngularFactor( 1, 0, 1 );
+    // body.setLinearFactor( 0, 1, 0 );
     this._physicsWorld.addRigidBody(body);
 
     const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: isPlayer };
@@ -228,7 +234,7 @@ class OrbitTests {
     transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
     const motionState = new Ammo.btDefaultMotionState(transform);
     
-    let colShape = new Ammo.btBoxShape(new Ammo.btVector3(scale.x, scale.y, scale.z));
+    let colShape = new Ammo.btBoxShape(new Ammo.btVector3(scale.x/2, scale.y, scale.z/2));
     colShape.setMargin(0.05);
     let localInertia = new Ammo.btVector3(0, 0, 0);
     colShape.calculateLocalInertia(mass, localInertia);
@@ -243,7 +249,19 @@ class OrbitTests {
     const retVal = { obj3d: line, physicsBody: body, isPlayer: false };
     this._rigidBodies.push(retVal);
 
+    
+    console.log(body);
+    console.log(body.getFriction());
     return retVal;
+  }
+
+  resetCone = () => {
+    const transform = new Ammo.btTransform();
+    transform.setIdentity();
+    transform.setOrigin(new Ammo.btVector3(0, 0, 0));
+    transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
+    const motionState = new Ammo.btDefaultMotionState(transform);
+    this._player.physicsBody.setMotionState(motionState);
   }
 
   setupPhysicsWorld = () => {
@@ -297,6 +315,10 @@ class OrbitTests {
         obj3d.position.set(x, y, z);
 
         if (obj.isPlayer) {
+          //console.log(`Player y: ${y}`);
+          if (y < -5) {
+            this.resetCone();
+          }
           const moveDelta = obj3d.position.clone();
           moveDelta.sub(oldObj3dPos);
           this._camera.position.add(moveDelta);
