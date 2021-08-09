@@ -244,6 +244,8 @@ class MMOrbitControls extends EventDispatcher {
 					}
 				}
 				
+				// hope this works...
+				scope.camPlayer.position.copy(scope.player.position);
 
 				// Get Camera position
 				const position = scope.object.position;
@@ -325,16 +327,16 @@ class MMOrbitControls extends EventDispatcher {
 					if (scope.movePlayerCallback) {
 						// Make the callback handle actual movement once we know how much
 						// we intend to move the player.
+						// EXCEPT: actualPlayermovement. it will not work with the physics ticks
+						// because they will likely not be synchronous with this update method...
+						// I will try to move the camera from the physics tick...
 						actualPlayerMovement = scope.movePlayerCallback(moveDelta);
 					} else {
 						// Move the player directly
-						//scope.player.position.add(moveDelta);
+						scope.player.position.add(moveDelta);
+						scope.object.position.add(moveDelta);
 					}
 
-
-					// Apply actual player movement delta to camera and the cheater 'camera player'
-					scope.camPlayer.position.copy(scope.player.position);
-					scope.object.position.add(moveDelta);
 
 					if (isMovingForwardOrStrafingForward) {
 						if (scope.shiftKeyDown) {

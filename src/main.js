@@ -3,7 +3,11 @@
 import { MMOrbitControls } from './MMOrbitControls.js';
 import * as THREE from './three.module.js';
 
+// Player states
 const PSTATE = { IDLE: "Idle", WALKFORWARD: "WalkForward", RUNFORWARD: "RunForward", WALKBACKWARD: 'WalkBackward', RUNBACKWARD: 'RunBackward' };
+
+// Ammo JS states
+const ASTATE = { DISABLE_DEACTIVATION: 4 }
 
 class OrbitTests {
 
@@ -20,8 +24,14 @@ class OrbitTests {
     this._clock = new THREE.Clock();
 
     // physics
+    this._enablePhysics = true;
+    this._mvPlr = this._movePlayerCallback;
+
     this._physicsWorld = null;
     this._rigidBodies = [];
+    this._tmpTrans = new Ammo.btTransform();
+
+    this.setupPhysicsWorld();
 
     // camera aspect ratio starts out matching viewport aspect ratio
     this._camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
@@ -53,15 +63,12 @@ class OrbitTests {
     });
 
     // create objects
-    //this._rotationController = new THREE.Object3D();
-    //this._scene.add(this._rotationController);
     this._ground = this.createPlane("ground", 0x00FF00);
-    //this._cone = this.createCone(0x0000FF, new THREE.Vector3(0, 0, -1));
-    this._player = this.createCone(0xFF0000, new THREE.Vector3(0, 0, 0));
+    this._player = this.createCone(0xFF0000, new THREE.Vector3(0, 1, 0), true);
     this._playerState = PSTATE.IDLE;
 
     // controls
-    const controls = new MMOrbitControls(this._camera, this._player, this._movePlayerCallback, this._walkForward, this._walkBackward, this._runForward, this._runBackward, this._stopMoving, this._groundCheck, this._collisionCheck, renderer.domElement);
+    const controls = new MMOrbitControls(this._camera, this._player.obj3d, this._mvPlr, this._walkForward, this._walkBackward, this._runForward, this._runBackward, this._stopMoving, this._groundCheck, this._collisionCheck, renderer.domElement);
 
     // create our lights
     const light = new THREE.AmbientLight(0xFFFFFF, .4);
@@ -72,7 +79,7 @@ class OrbitTests {
     this._camera.position.z = -3;
     this._camera.position.y = 1;
     this._camera.position.x = -0;
-    this._camera.lookAt(this._player.position);
+    this._camera.lookAt(this._player.obj3d.position);
 
     light.position.set(10, 0, 25);
 
@@ -87,48 +94,60 @@ class OrbitTests {
       let deltaTime = this._clock.getDelta();
       requestAnimationFrame(render);
       controls.update(deltaTime);
+      this.updatePhysics(deltaTime);
       renderer.render(this._scene, this._camera);
     };
     render();
   }
 
   _movePlayerCallback = (moveDelta) => {
-    this._player.position.add(moveDelta);
-    return moveDelta;
+    // this._player.obj3d.position.add(moveDelta);
+    // return moveDelta;
+
+    const scalingFactor = 60;
+    const resultantImpulse = new Ammo.btVector3(moveDelta.x, moveDelta.y, moveDelta.z)
+    resultantImpulse.op_mul(scalingFactor);
+    //console.log(`resultantImpulse`, resultantImpulse);
+
+    const body = this._player.physicsBody;
+    //console.log(`physicsBody before: `, body);
+    body.setLinearVelocity(resultantImpulse);
+    //console.log(`physicsBody after: `, body);
+
   }
 
   _walkForward = () => {
     if (this._playerState != PSTATE.WALKFORWARD) {
       this._playerState = PSTATE.WALKFORWARD;
-      this._player.children[0].material.color.setHex(0x00AA00);
+      this._player.obj3d.children[0].material.color.setHex(0x00AA00);
     }
   }
 
   _walkBackward = () => {
     if (this._playerState != PSTATE.WALKBACKWARD) {
       this._playerState = PSTATE.WALKBACKWARD;
-      this._player.children[0].material.color.setHex(0x666666);
+      this._player.obj3d.children[0].material.color.setHex(0x666666);
     }
   }
 
   _runForward = () => {
     if (this._playerState != PSTATE.RUNFORWARD) {
       this._playerState = PSTATE.RUNFORWARD;
-      this._player.children[0].material.color.setHex(0x00FF00);
+      this._player.obj3d.children[0].material.color.setHex(0x00FF00);
     }
   }
 
   _runBackward = () => {
     if (this._playerState != PSTATE.RUNBACKWARD) {
       this._playerState = PSTATE.RUNBACKWARD;
-      this._player.children[0].material.color.setHex(0xDDDDDD);
+      this._player.obj3d.children[0].material.color.setHex(0xDDDDDD);
     }
   }
 
   _stopMoving = () => {
     if (this._playerState != PSTATE.IDLE) {
       this._playerState = PSTATE.IDLE;
-      this._player.children[0].material.color.setHex(0xFF0000);
+      this._player.obj3d.children[0].material.color.setHex(0xFF0000);
     }
   }
 
@@ -140,9 +159,14 @@ class OrbitTests {
     return false;
   }
 
-  createCone = (color, position) => {
+  createCone = (color, position, isPlayer) => {
+
+    const radius = .1;
+    const mass = 1;
+
+    // Create the three js object
     const obj3d = new THREE.Object3D();
-    const geometry = new THREE.ConeGeometry(.1, .5, 32);
+    const geometry = new THREE.ConeGeometry(radius, .5, 32);
     const material = new THREE.MeshBasicMaterial({ color: color });
     const cone = new THREE.Mesh(geometry, material);
     cone.position.y += .125;
@@ -151,14 +175,36 @@ class OrbitTests {
     this._scene.add(obj3d);
     obj3d.position.copy(position);
 
-    console.log(`cone:`, cone);
-    console.log(`obj3d:`, obj3d);
-    return obj3d;
+    // Create the ammo js object
+    const transform = new Ammo.btTransform();
+    transform.setIdentity();
+    transform.setOrigin(new Ammo.btVector3(position.x, position.y, position.z));
+    transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
+    const motionState = new Ammo.btDefaultMotionState(transform);
+    let colShape = new Ammo.btSphereShape(radius);
+    colShape.setMargin(0.05);
+    let localInertia = new Ammo.btVector3(0, 0, 0);
+    colShape.calculateLocalInertia(mass, localInertia);
+    let rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
+    let body = new Ammo.btRigidBody(rbInfo);
+    body.setFriction(.4);
+    body.setRollingFriction(.10);
+    body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
+    //body.setAngularFactor( 0, 0, 0 );
+    this._physicsWorld.addRigidBody(body);
+
+    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: isPlayer };
+    this._rigidBodies.push(retVal);
+
+    return retVal;
   }
 
   createPlane = (name, color) => {
 
-    const geometry = new THREE.PlaneGeometry(100, 100, 100, 100);
+    const mass = 0;
+    let scale = { x: 100, y: .2, z: 100 };
+
+    const geometry = new THREE.PlaneGeometry(scale.x, scale.z, 100, 100);
     const wireframe = new THREE.WireframeGeometry(geometry);
     const line = new THREE.LineSegments(wireframe);
 
@@ -170,13 +216,34 @@ class OrbitTests {
     line.material = material;
     line.name = name;
     const xAxis = new THREE.Vector3(1, 0, 0);
-    line.rotateOnAxis(xAxis, 0.5 * Math.PI)
+    line.rotateOnAxis(xAxis, 0.5 * Math.PI);
 
     this._scene.add(line);
 
-    console.log(line);
+    
+    // Create the ammo js object
+    const transform = new Ammo.btTransform();
+    transform.setIdentity();
+    transform.setOrigin(new Ammo.btVector3(0, 0, 0));
+    transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
+    const motionState = new Ammo.btDefaultMotionState(transform);
+    
+    let colShape = new Ammo.btBoxShape(new Ammo.btVector3(scale.x, scale.y, scale.z));
+    colShape.setMargin(0.05);
+    let localInertia = new Ammo.btVector3(0, 0, 0);
+    colShape.calculateLocalInertia(mass, localInertia);
+    let rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
+    const body = new Ammo.btRigidBody(rbInfo);
+    body.setFriction(1);
+    body.setRollingFriction(2);
+    body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
+    body.setAngularFactor( 0, 0, 0 );
+    this._physicsWorld.addRigidBody(body);
 
-    return line;
+    const retVal = { obj3d: line, physicsBody: body, isPlayer: false };
+    this._rigidBodies.push(retVal);
+
+    return retVal;
   }
 
   setupPhysicsWorld = () => {
@@ -193,22 +260,48 @@ class OrbitTests {
 
   updatePhysics = (deltaTime) => {
 
+    if (!this._enablePhysics) {
+      return;
+    }
+
     // Step world
     this._physicsWorld.stepSimulation(deltaTime, 10);
 
-    // Update rigid bodies
+    // Loop through all the rigid bodies and update them
     for (let i = 0; i < this._rigidBodies.length; i++) {
-      let objThree = rigidBodies[i];
-      let objAmmo = objThree.userData.physicsBody;
-      let ms = objAmmo.getMotionState();
-      if (ms) {
 
-        ms.getWorldTransform(tmpTrans);
-        let p = tmpTrans.getOrigin();
-        let q = tmpTrans.getRotation();
-        objThree.position.set(p.x(), p.y(), p.z());
-        objThree.quaternion.set(q.x(), q.y(), q.z(), q.w());
+      // get the current object
+      const obj = this._rigidBodies[i];
 
+      // get its physics object
+      const objAmmo = obj.physicsBody;
+
+      // get the three js object
+      const obj3d = obj.obj3d;
+
+      // figure out location/rotation of the given physics object
+      let myMotionState = objAmmo.getMotionState();
+
+      if (myMotionState) {
+
+        // convert the position from local to world coords
+        myMotionState.getWorldTransform(this._tmpTrans);
+        const ammoPosInWorldCoords = this._tmpTrans.getOrigin();
+        const x = ammoPosInWorldCoords.x();
+        const y = ammoPosInWorldCoords.y();
+        const z = ammoPosInWorldCoords.z();
+
+        const oldObj3dPos = obj3d.position.clone();
+
+        // Set the three js object's position. (in world coords??)
+        obj3d.position.set(x, y, z);
+
+        if (obj.isPlayer) {
+          const moveDelta = obj3d.position.clone();
+          moveDelta.sub(oldObj3dPos);
+          this._camera.position.add(moveDelta);
+        }
+        
       }
     }
 
