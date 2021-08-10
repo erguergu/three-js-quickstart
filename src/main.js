@@ -4,7 +4,7 @@ import { MMOrbitControls } from './MMOrbitControls.js';
 import * as THREE from './three.module.js';
 
 // Player states
-const PSTATE = { IDLE: "Idle", WALKFORWARD: "WalkForward", RUNFORWARD: "RunForward", WALKBACKWARD: 'WalkBackward', RUNBACKWARD: 'RunBackward' };
+const PSTATE = { IDLE: "Idle", WALKFORWARD: "WalkForward", RUNFORWARD: "RunForward", WALKBACKWARD: 'WalkBackward', RUNBACKWARD: 'RunBackward', JUMP: 'Jump' };
 
 // Ammo JS states
 const ASTATE = { DISABLE_DEACTIVATION: 4 }
@@ -68,7 +68,7 @@ class OrbitTests {
     this._playerState = PSTATE.IDLE;
 
     // controls
-    const controls = new MMOrbitControls(this._camera, this._player.obj3d, this._mvPlr, this._walkForward, this._walkBackward, this._runForward, this._runBackward, this._stopMoving, this._groundCheck, this._collisionCheck, renderer.domElement);
+    const controls = new MMOrbitControls(this._camera, this._player.obj3d, this._mvPlr, this._walkForward, this._walkBackward, this._runForward, this._runBackward, this._stopMoving, this._jump, this._groundCheck, this._collisionCheck, renderer.domElement);
 
     // create our lights
     const light = new THREE.AmbientLight(0xFFFFFF, .4);
@@ -153,6 +153,12 @@ class OrbitTests {
     if (this._playerState != PSTATE.IDLE) {
       this._playerState = PSTATE.IDLE;
       this._player.obj3d.children[0].material.color.setHex(0xFF0000);
+    }
+  }
+
+  _jump = () => {
+    if (this._playerState != PSTATE.JUMP) {
+      this._playerState = PSTATE.JUMP;
     }
   }
 

@@ -23,7 +23,7 @@ const MMOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATEL: 0, DOLLY: 1, ROTATER: 2 
 const MMTOUCH = { ROTATEL: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATEL: 3 };
 
 class MMOrbitControls extends EventDispatcher {
-	constructor(object, player, movePlayerCallback, walkForwardCallback, walkBackwardCallback, runForwardCallback, runBackwardCallback, stopMovingCallback, groundCheck, collisionCheck, domElement) {
+	constructor(object, player, movePlayerCallback, walkForwardCallback, walkBackwardCallback, runForwardCallback, runBackwardCallback, stopMovingCallback, jumpCallback, groundCheck, collisionCheck, domElement) {
 		super();
 		if (domElement === undefined) console.warn('THREE.OrbitControls: The second parameter "domElement" is now mandatory.');
 		if (domElement === document) console.error('THREE.OrbitControls: "document" should not be used as the target "domElement". Please use "renderer.domElement" instead.');
@@ -37,6 +37,7 @@ class MMOrbitControls extends EventDispatcher {
 		this.runForwardCallback = runForwardCallback;
 		this.runBackwardCallback = runBackwardCallback;
 		this.stopMovingCallback = stopMovingCallback;
+		this.jumpCallback = jumpCallback;
 		this.groundCheck = groundCheck;
 		this.collisionCheck = collisionCheck;
 		this.domElement = domElement;
@@ -114,6 +115,10 @@ class MMOrbitControls extends EventDispatcher {
 		this.isMovingRight = false;
 		this.wasMovingRight = false;
 
+		this.jumpKeyDown = false;
+		this.lastJumpTime = 0.0;
+		this.jumpCooldown = 1.0;
+
 		this.isStrafing = false;
 		this.wasStrafing = false;
 
@@ -188,6 +193,18 @@ class MMOrbitControls extends EventDispatcher {
 					scope.isMovingRight  = true;
 				} else {
 					scope.isMovingRight = false;
+				}
+
+
+				let isJumping = false;
+				if (scope.lastJumpTime >= 0 && deltaTime >= 0){
+					scope.lastJumpTime += deltaTime;
+				}
+				if (scope.jumpKeyDown) {
+					if (scope.lastJumpTime > scope.jumpCooldown) {
+						scope.lastJumpTime = 0;
+						isJumping = true;
+					}
 				}
 
 				scope.isStrafing = (scope.isMovingRight || scope.isMovingLeft) && scope.mouseRDown;
@@ -308,14 +325,15 @@ class MMOrbitControls extends EventDispatcher {
 				}
 
 				const isMovingForwardOrStrafingForward = scope.isMovingForward || (scope.isStrafing && !scope.isMovingBackward);
-				if (isMovingForwardOrStrafingForward || scope.isMovingBackward) {
+				if (isMovingForwardOrStrafingForward || scope.isMovingBackward || isJumping) {
 					const forwardBackward = isMovingForwardOrStrafingForward ? 1 : -1;
-					const forward = new Vector3(0, 0, 1);
 					const walkOrRunSpeed = scope.shiftKeyDown ? scope.runSpeed : scope.walkSpeed;
+					//const forward = new Vector3(0, 0, 1);
+					const forward = new Vector3(0, isJumping ? 1 : 0, forwardBackward * walkOrRunSpeed);
 
 					forward.applyQuaternion(scope.player.quaternion);
-					forward.normalize();
-					forward.multiplyScalar(forwardBackward * walkOrRunSpeed);
+					//forward.normalize();
+					//forward.multiplyScalar(forwardBackward * walkOrRunSpeed);
 					const pos = scope.player.position.clone();
 					pos.add(forward);
 					const moveDelta = pos.clone();
@@ -483,17 +501,6 @@ class MMOrbitControls extends EventDispatcher {
 			rotateStart.copy(rotateEnd);
 			//TRYRENDERscope.update();
 		}
-		function handleMouseMoveDolly(event) {
-			dollyEnd.set(event.clientX, event.clientY);
-			dollyDelta.subVectors(dollyEnd, dollyStart);
-			if (dollyDelta.y > 0) {
-				dollyOut(getZoomScale());
-			} else if (dollyDelta.y < 0) {
-				dollyIn(getZoomScale());
-			}
-			dollyStart.copy(dollyEnd);
-			//TRYRENDERscope.update();
-		}
 		function handleMouseUp( /*event*/) {
 			// no-op
 		}
@@ -525,6 +532,9 @@ class MMOrbitControls extends EventDispatcher {
 				case "KeyD":
 					scope.rightKeyDown = true;
 					break;
+				case "Space":
+					scope.jumpKeyDown = true;
+					break;
 			}
 		}
 
@@ -546,6 +556,9 @@ class MMOrbitControls extends EventDispatcher {
 					break;
 				case "KeyD":
 					scope.rightKeyDown = false;
+					break;
+				case "Space":
+					scope.jumpKeyDown = false;
 					break;
 			}
 		}
