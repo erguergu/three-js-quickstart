@@ -326,10 +326,10 @@ class MMOrbitControls extends EventDispatcher {
 
 				const isMovingForwardOrStrafingForward = scope.isMovingForward || (scope.isStrafing && !scope.isMovingBackward);
 				if (isMovingForwardOrStrafingForward || scope.isMovingBackward || isJumping) {
-					const forwardBackward = isMovingForwardOrStrafingForward ? 1 : -1;
+					const forwardBackward = isMovingForwardOrStrafingForward ? 1 : (scope.isMovingBackward ? -1 : 0);
 					const walkOrRunSpeed = scope.shiftKeyDown ? scope.runSpeed : scope.walkSpeed;
 					//const forward = new Vector3(0, 0, 1);
-					const forward = new Vector3(0, isJumping ? 1 : 0, forwardBackward * walkOrRunSpeed);
+					const forward = new Vector3(0, isJumping ? .1 : 0, forwardBackward * walkOrRunSpeed);
 
 					forward.applyQuaternion(scope.player.quaternion);
 					//forward.normalize();
@@ -348,6 +348,7 @@ class MMOrbitControls extends EventDispatcher {
 						// EXCEPT: actualPlayermovement. it will not work with the physics ticks
 						// because they will likely not be synchronous with this update method...
 						// I will try to move the camera from the physics tick...
+						// Yes. That worked.
 						actualPlayerMovement = scope.movePlayerCallback(moveDelta);
 					} else {
 						// Move the player directly

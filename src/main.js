@@ -112,6 +112,8 @@ class OrbitTests {
       return;
     }
 
+    console.log(`_movePlayerCallback: Touching the ground, will apply impulse.`);
+    console.log(`Movement vector:`, moveDelta);
     const scalingFactor = 60;
     const resultantImpulse = new Ammo.btVector3(moveDelta.x, moveDelta.y, moveDelta.z)
     resultantImpulse.op_mul(scalingFactor);
