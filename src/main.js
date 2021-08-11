@@ -101,25 +101,23 @@ class OrbitTests {
   }
 
   _movePlayerCallback = (moveDelta) => {
-    // this._player.obj3d.position.add(moveDelta);
-    // return moveDelta;
 
-    // int numManifolds = world->getDispatcher()->getNumManifolds();
-    // printf("numManifolds = %d\n",numManifolds);
-
+    // here we are finding out if the player is touching the ground by aking
+    // the engine if ANY collisions are occurring anywhere in the entire simulation
     const numMan = this._physicsWorld.getDispatcher().getNumManifolds();
     if (numMan == 0) {
       return;
     }
 
-    console.log(`_movePlayerCallback: Touching the ground, will apply impulse.`);
-    console.log(`Movement vector:`, moveDelta);
-    const scalingFactor = 60;
-    const resultantImpulse = new Ammo.btVector3(moveDelta.x, moveDelta.y, moveDelta.z)
+    // get player's physics object
+    const body = this._player.physicsBody;
+
+    // here we apply ONLY a force vector. then in the tick we have to clamp linear velocity manually
+    const scalingFactor = 2;
+    const resultantImpulse = new Ammo.btVector3(moveDelta.x, moveDelta.y*10, moveDelta.z)
     resultantImpulse.op_mul(scalingFactor);
 
-    const body = this._player.physicsBody;
-    body.setLinearVelocity(resultantImpulse);
+    body.applyCentralImpulse(resultantImpulse);
 
   }
 
@@ -202,12 +200,15 @@ class OrbitTests {
     let body = new Ammo.btRigidBody(rbInfo);
     body.setFriction(.4);
     body.setRollingFriction(.10);
+    //body.setDamping(.2, 0);
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
     // body.setAngularFactor( 1, 0, 1 );
     // body.setLinearFactor( 0, 1, 0 );
     this._physicsWorld.addRigidBody(body);
 
-    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: isPlayer };
+    const maxSpeed = 2.5;
+
+    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: isPlayer, maxSpeed: maxSpeed };
     this._rigidBodies.push(retVal);
 
     return retVal;
@@ -248,8 +249,8 @@ class OrbitTests {
     colShape.calculateLocalInertia(mass, localInertia);
     let rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
     const body = new Ammo.btRigidBody(rbInfo);
-    body.setFriction(1);
-    body.setRollingFriction(2);
+    body.setFriction(1); // was 1
+    body.setRollingFriction(1); // was 2
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
     body.setAngularFactor( 0, 0, 0 );
     this._physicsWorld.addRigidBody(body);
@@ -290,6 +291,26 @@ class OrbitTests {
       return;
     }
 
+
+    // OKAY.
+    // Before we can stepSimulation, we will need to look at the player object's linear velocity
+    // and calculate the speed on the X, Z plane. If it is greater than _player.maxSpeed or something,
+    // then we need to do whatever math is needed to scale down the x and z values so that we only go
+    // at max speed.
+    // const vel = body.getLinearVelocity();
+    // console.log(`getLinearVelocity: x = ${vel.x()}, z = ${vel.z()}`);
+    const linVel = this._player.physicsBody.getLinearVelocity();
+    const linXZ = { x: linVel.x(), z: linVel.z() };
+    const speed = Math.abs(Math.sqrt(linXZ.x^2 + linXZ.z^2));
+    const speeding = speed > this._player.maxSpeed;
+    if (speeding) {
+      const ratio = this._player.maxSpeed / speed;
+      const newX = linXZ.x * ratio * (linXZ.x < 0 ? -1 : 1);
+      const newZ = linXZ.z * ratio * (linXZ.z < 0 ? -1 : 1);
+      console.log(`SPEEDING!!!! Ratio: ${ratio}  New X: ${newX}, New Z: ${newZ}`);      
+      this._player.physicsBody.setLinearVelocity(new Ammo.btVector3(newX, linVel.y(), newZ));
+    }
+
     // Step world
     this._physicsWorld.stepSimulation(deltaTime, 10);
 
@@ -306,7 +327,7 @@ class OrbitTests {
       const obj3d = obj.obj3d;
 
       // figure out location/rotation of the given physics object
-      let myMotionState = objAmmo.getMotionState();
+      const myMotionState = objAmmo.getMotionState();
 
       if (myMotionState) {
 
@@ -323,7 +344,7 @@ class OrbitTests {
         obj3d.position.set(x, y, z);
 
         if (obj.isPlayer) {
-          //console.log(`Player y: ${y}`);
+    
           if (y < -5) {
             this.resetCone();
           }
