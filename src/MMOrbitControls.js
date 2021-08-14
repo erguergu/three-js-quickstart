@@ -117,7 +117,7 @@ class MMOrbitControls extends EventDispatcher {
 
 		this.jumpKeyDown = false;
 		this.lastJumpTime = 0.0;
-		this.jumpCooldown = 1.0;
+		this.jumpCooldown = 0.5;
 
 		this.isStrafing = false;
 		this.wasStrafing = false;

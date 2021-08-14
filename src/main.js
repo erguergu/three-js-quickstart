@@ -63,7 +63,11 @@ class OrbitTests {
     });
 
     // create objects
-    this._ground = this.createPlane("ground", 0x00FF00);
+    const zDeg = 25 * (Math.PI/180); // 0.5 * Math.PI;
+    const zDeg2 = (180-25) * (Math.PI/180);
+    this._ground = this.createPlane("ground", 0x00FF00, [20,10], [0,0,0], [0,0,0]);
+    this.createPlane("wall", 0x00FF00, [10,10], [14.5,2.125,0], [0,0,zDeg]);
+    this.createPlane("wall1", 0x00FF00, [10,10], [-14.5,-2.125,0], [0,0,zDeg]);
     this._player = this.createCone(0xFF0000, new THREE.Vector3(0, 1, 0), true);
     this._playerState = PSTATE.IDLE;
 
@@ -102,10 +106,7 @@ class OrbitTests {
 
   _movePlayerCallback = (moveDelta) => {
 
-    // here we are finding out if the player is touching the ground by aking
-    // the engine if ANY collisions are occurring anywhere in the entire simulation
-    const numMan = this._physicsWorld.getDispatcher().getNumManifolds();
-    if (numMan == 0) {
+    if (!this._isTouchingGround()) {
       return;
     }
 
@@ -114,10 +115,20 @@ class OrbitTests {
 
     // here we apply ONLY a force vector. then in the tick we have to clamp linear velocity manually
     const scalingFactor = 2;
-    const resultantImpulse = new Ammo.btVector3(moveDelta.x, moveDelta.y*10, moveDelta.z)
+    const resultantImpulse = new Ammo.btVector3(moveDelta.x, moveDelta.y*20, moveDelta.z)
     resultantImpulse.op_mul(scalingFactor);
 
     body.applyCentralImpulse(resultantImpulse);
+
+  }
+
+  _isTouchingGround = () => {
+
+    // here we are finding out if the player is touching the ground by aking
+    // the engine if ANY collisions are occurring anywhere in the entire simulation
+    // need to fix this soon.
+    const numMan = this._physicsWorld.getDispatcher().getNumManifolds();
+    return numMan > 0;
 
   }
 
@@ -202,24 +213,32 @@ class OrbitTests {
     body.setRollingFriction(.10);
     //body.setDamping(.2, 0);
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
-    // body.setAngularFactor( 1, 0, 1 );
+    body.setAngularFactor( 0, 0, 0 );
     // body.setLinearFactor( 0, 1, 0 );
     this._physicsWorld.addRigidBody(body);
 
-    const maxSpeed = 2.5;
+    const maxWalk = 2.5;
+    const maxRun = 4.5;
 
-    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: isPlayer, maxSpeed: maxSpeed };
+    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: isPlayer, maxWalk: maxWalk, maxRun: maxRun };
     this._rigidBodies.push(retVal);
 
     return retVal;
   }
 
-  createPlane = (name, color) => {
+  createPlane = (name, color, scale, position, rotation) => {
 
+    //let xScale, yScale, zScale, xPos, yPos, zPos, xRot, yRot, zRot;
     const mass = 0;
-    let scale = { x: 100, y: .2, z: 100 };
+    //let scale = { x: 100, y: .2, z: 100 };
 
-    const geometry = new THREE.PlaneGeometry(scale.x, scale.z, 100, 100);
+    const [xScale, yScale, zScale] = [scale[0], .2, scale[1]];
+    const [xPos, yPos, zPos] = position;
+    const [xRot, yRot, zRot] = rotation;
+    //const scale = { x: xScale, y: .2, z: zScale };
+
+    const obj3d = new THREE.Object3D();
+    const geometry = new THREE.PlaneGeometry(xScale, zScale, xScale*3, zScale*3);
     const wireframe = new THREE.WireframeGeometry(geometry);
     const line = new THREE.LineSegments(wireframe);
 
@@ -231,19 +250,35 @@ class OrbitTests {
     line.material = material;
     line.name = name;
     const xAxis = new THREE.Vector3(1, 0, 0);
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    const zAxis = new THREE.Vector3(0, 0, 1);
     line.rotateOnAxis(xAxis, 0.5 * Math.PI);
+    line.position.z = yScale/2;
+    obj3d.add(line);
 
-    this._scene.add(line);
+    obj3d.position.set(xPos,yPos,zPos);
+    console.log(`${name} position`, obj3d.position);
+
+    obj3d.rotateOnAxis(xAxis, xRot);
+    obj3d.rotateOnAxis(yAxis, yRot);
+    obj3d.rotateOnAxis(zAxis, zRot);
+
+    const obj3dQuat = obj3d.quaternion;
+    console.log(`obj3dquat:`, obj3dQuat);
+
+    this._scene.add(obj3d);
 
     
     // Create the ammo js object
     const transform = new Ammo.btTransform();
     transform.setIdentity();
-    transform.setOrigin(new Ammo.btVector3(0, 0, 0));
-    transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
+    console.log(`Setting ${name} phys origin to ${xPos},${yPos},${zPos}`);
+    //transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
+    transform.setRotation(new Ammo.btQuaternion(obj3dQuat.x, obj3dQuat.y, obj3dQuat.z, obj3dQuat.w));
+    transform.setOrigin(new Ammo.btVector3(xPos, yPos, zPos));
     const motionState = new Ammo.btDefaultMotionState(transform);
     
-    let colShape = new Ammo.btBoxShape(new Ammo.btVector3(scale.x/2, scale.y, scale.z/2));
+    let colShape = new Ammo.btBoxShape(new Ammo.btVector3(xScale/2, yScale, zScale/2));
     colShape.setMargin(0.05);
     let localInertia = new Ammo.btVector3(0, 0, 0);
     colShape.calculateLocalInertia(mass, localInertia);
@@ -255,7 +290,7 @@ class OrbitTests {
     body.setAngularFactor( 0, 0, 0 );
     this._physicsWorld.addRigidBody(body);
 
-    const retVal = { obj3d: line, physicsBody: body, isPlayer: false };
+    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: false };
     this._rigidBodies.push(retVal);
 
     
@@ -294,20 +329,20 @@ class OrbitTests {
 
     // OKAY.
     // Before we can stepSimulation, we will need to look at the player object's linear velocity
-    // and calculate the speed on the X, Z plane. If it is greater than _player.maxSpeed or something,
+    // and calculate the speed on the X, Z plane. If it is greater than _player.maxWalk or something,
     // then we need to do whatever math is needed to scale down the x and z values so that we only go
     // at max speed.
     // const vel = body.getLinearVelocity();
     // console.log(`getLinearVelocity: x = ${vel.x()}, z = ${vel.z()}`);
     const linVel = this._player.physicsBody.getLinearVelocity();
     const linXZ = { x: linVel.x(), z: linVel.z() };
-    const speed = Math.abs(Math.sqrt(linXZ.x^2 + linXZ.z^2));
-    const speeding = speed > this._player.maxSpeed;
+    const speed = Math.abs(Math.sqrt(linXZ.x*linXZ.x + linXZ.z*linXZ.z));
+    const maxSpeed = (this._playerState == PSTATE.WALKBACKWARD || this._playerState == PSTATE.WALKFORWARD) ? this._player.maxWalk : this._player.maxRun;
+    const speeding = speed > maxSpeed;    
     if (speeding) {
-      const ratio = this._player.maxSpeed / speed;
-      const newX = linXZ.x * ratio * (linXZ.x < 0 ? -1 : 1);
-      const newZ = linXZ.z * ratio * (linXZ.z < 0 ? -1 : 1);
-      console.log(`SPEEDING!!!! Ratio: ${ratio}  New X: ${newX}, New Z: ${newZ}`);      
+      const ratio = maxSpeed / speed;
+      const newX = linXZ.x * ratio;
+      const newZ = linXZ.z * ratio;
       this._player.physicsBody.setLinearVelocity(new Ammo.btVector3(newX, linVel.y(), newZ));
     }
 
