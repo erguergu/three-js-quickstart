@@ -1,6 +1,7 @@
 
 //import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.118.1/build/three.module.js';
 import { MMOrbitControls } from './MMOrbitControls.js';
+import { HeightMapGenerator } from './HeightMap.js';
 import * as THREE from './three.module.js';
 
 // Player states
@@ -41,6 +42,32 @@ class OrbitTests {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     this._canv = document.getElementById('maindiv');
 
+    // textures
+    // I think this is old but let me see
+    // var bumpTexture = new THREE.ImageUtils.loadTexture( 'images/heightmap.png' );
+    new THREE.ImageBitmapLoader().load( './src/height.png', (texture) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.style.display = 'none';
+      canvas.style.height = '1920px';
+      canvas.style.width = '1920px';
+      console.log(`image`, texture);
+      try {
+        ctx.drawImage(texture, 0, 0);
+        for (let y = 1919; y < texture.height; y++ ) {
+          for (let x = 0; x < texture.width; x++) {
+            const thing = ctx.getImageData(x, y, 1, 1);
+            const avgColor = (thing.data[0] + thing.data[1] + thing.data[2]) / 3;
+            // okay so we can take the array of 
+          }
+        }
+      } catch (ex) {
+        console.log(`bad`, ex);
+      }
+    });
+
+
+
 
     // black background
     renderer.setClearColor("#000000");
@@ -65,10 +92,13 @@ class OrbitTests {
     // create objects
     const zDeg = 25 * (Math.PI/180); // 0.5 * Math.PI;
     const zDeg2 = (180-25) * (Math.PI/180);
-    this._ground = this.createPlane("ground", 0x00FF00, [20,10], [0,0,0], [0,0,0]);
+    this.createPlane("ground", 0x00FF00, [20,10], [0,0,0], [0,0,0], true);
     this.createPlane("wall", 0x00FF00, [10,10], [14.5,2.125,0], [0,0,zDeg]);
     this.createPlane("wall1", 0x00FF00, [10,10], [-14.5,-2.125,0], [0,0,zDeg]);
-    this._player = this.createCone(0xFF0000, new THREE.Vector3(0, 1, 0), true);
+
+    this._playerStartHeight = 10;
+    this._playerResetHeight = -10;
+    this._player = this.createCone(0xFF0000, new THREE.Vector3(0, this._playerStartHeight, 0), true);
     this._playerState = PSTATE.IDLE;
 
     // controls
@@ -81,7 +111,7 @@ class OrbitTests {
 
     // set initial position and rotation of our objects and lights
     this._camera.position.z = -3;
-    this._camera.position.y = 1;
+    this._camera.position.y = this._player.obj3d.position.y + 2;
     this._camera.position.x = -0;
     this._camera.lookAt(this._player.obj3d.position);
 
@@ -102,6 +132,29 @@ class OrbitTests {
       renderer.render(this._scene, this._camera);
     };
     render();
+    const arr = [10,20,30,40];
+    console.log(this._shrinkRow(arr, 3));
+  }
+
+  _splitToChunks(array, parts) {
+    let result = [];
+    for (let i = parts; i > 0; i--) {
+        result.push(array.splice(0, Math.ceil(array.length / i)));
+    }
+    return result;
+  }
+
+  _shrinkRow(inputArray, outArrayLength) {
+    
+    const copy = inputArray.slice();
+    const outThing = [];
+    const chunks = this._splitToChunks(copy, outArrayLength);
+    console.log(`chunks`, chunks);
+
+    for (const chunk of chunks) {
+      outThing.push(chunk.reduce((a, b) => a + b) / chunk.length);
+    }
+    return outThing;
   }
 
   _movePlayerCallback = (moveDelta) => {
@@ -203,7 +256,7 @@ class OrbitTests {
     transform.setOrigin(new Ammo.btVector3(position.x, position.y, position.z));
     transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
     const motionState = new Ammo.btDefaultMotionState(transform);
-    let colShape = new Ammo.btSphereShape(radius);
+    let colShape = new Ammo.btSphereShape(radius*2);
     colShape.setMargin(0.05);
     let localInertia = new Ammo.btVector3(0, 0, 0);
     colShape.calculateLocalInertia(mass, localInertia);
@@ -214,7 +267,7 @@ class OrbitTests {
     //body.setDamping(.2, 0);
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
     body.setAngularFactor( 0, 0, 0 );
-    // body.setLinearFactor( 0, 1, 0 );
+    //body.setLinearFactor( 0, 0, 0 );
     this._physicsWorld.addRigidBody(body);
 
     const maxWalk = 2.5;
@@ -226,7 +279,7 @@ class OrbitTests {
     return retVal;
   }
 
-  createPlane = (name, color, scale, position, rotation) => {
+  createPlane = (name, color, scale, position, rotation, genHeightMap) => {
 
     //let xScale, yScale, zScale, xPos, yPos, zPos, xRot, yRot, zRot;
     const mass = 0;
@@ -238,7 +291,23 @@ class OrbitTests {
     //const scale = { x: xScale, y: .2, z: zScale };
 
     const obj3d = new THREE.Object3D();
-    const geometry = new THREE.PlaneGeometry(xScale, zScale, xScale*3, zScale*3);
+    const segmentMult = 4;
+    const xSegments = xScale*segmentMult;
+    const zSegments = zScale*segmentMult;
+    const geometry = new THREE.PlaneGeometry(xScale, zScale, xSegments-1,zSegments-1/*xScale*3, zScale*3*/);
+    geometry.rotateX( - Math.PI / 2 );
+    
+    const hmap = new HeightMapGenerator();
+    let hmapData = [];
+    const terrainMinHeight = 0;
+    const terrainMaxHeight = .25;
+    if (genHeightMap) {
+      hmapData = hmap.generateSampleWavyHeightData(xSegments, zSegments, terrainMinHeight, terrainMaxHeight);
+    } else {
+      hmapData = hmap.generateFlatHeightData(xSegments, zSegments);
+    }
+    hmap.applyHeightToPlane(geometry, hmapData);
+
     const wireframe = new THREE.WireframeGeometry(geometry);
     const line = new THREE.LineSegments(wireframe);
 
@@ -252,7 +321,7 @@ class OrbitTests {
     const xAxis = new THREE.Vector3(1, 0, 0);
     const yAxis = new THREE.Vector3(0, 1, 0);
     const zAxis = new THREE.Vector3(0, 0, 1);
-    line.rotateOnAxis(xAxis, 0.5 * Math.PI);
+    //line.rotateOnAxis(xAxis, 0.5 * Math.PI);
     line.position.z = yScale/2;
     obj3d.add(line);
 
@@ -278,7 +347,8 @@ class OrbitTests {
     transform.setOrigin(new Ammo.btVector3(xPos, yPos, zPos));
     const motionState = new Ammo.btDefaultMotionState(transform);
     
-    let colShape = new Ammo.btBoxShape(new Ammo.btVector3(xScale/2, yScale, zScale/2));
+    //let colShape = genHeightMap ? hmap.createTerrainShape(hmapData, xSegments, zSegments, terrainMinHeight, terrainMaxHeight, xScale, zScale) : new Ammo.btBoxShape(new Ammo.btVector3(xScale/2, yScale, zScale/2));
+    let colShape = hmap.createTerrainShape(hmapData, xSegments, zSegments, terrainMinHeight, terrainMaxHeight, xScale, zScale);
     colShape.setMargin(0.05);
     let localInertia = new Ammo.btVector3(0, 0, 0);
     colShape.calculateLocalInertia(mass, localInertia);
@@ -290,19 +360,17 @@ class OrbitTests {
     body.setAngularFactor( 0, 0, 0 );
     this._physicsWorld.addRigidBody(body);
 
-    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: false };
+    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: false, planeGeo: geometry };
     this._rigidBodies.push(retVal);
 
     
-    console.log(body);
-    console.log(body.getFriction());
     return retVal;
   }
 
   resetCone = () => {
     const transform = new Ammo.btTransform();
     transform.setIdentity();
-    transform.setOrigin(new Ammo.btVector3(0, 0, 0));
+    transform.setOrigin(new Ammo.btVector3(0, this._playerStartHeight, 0));
     transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
     const motionState = new Ammo.btDefaultMotionState(transform);
     this._player.physicsBody.setMotionState(motionState);
@@ -316,7 +384,7 @@ class OrbitTests {
       solver = new Ammo.btSequentialImpulseConstraintSolver();
 
     this._physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
-    this._physicsWorld.setGravity(new Ammo.btVector3(0, -10, 0));
+    this._physicsWorld.setGravity(new Ammo.btVector3(0, -9, 0));
 
   }
 
@@ -335,16 +403,27 @@ class OrbitTests {
     // const vel = body.getLinearVelocity();
     // console.log(`getLinearVelocity: x = ${vel.x()}, z = ${vel.z()}`);
     const linVel = this._player.physicsBody.getLinearVelocity();
-    const linXZ = { x: linVel.x(), z: linVel.z() };
-    const speed = Math.abs(Math.sqrt(linXZ.x*linXZ.x + linXZ.z*linXZ.z));
+    const linXYZ = { x: linVel.x(), y: linVel.y(), z: linVel.z() };
+    const speed = Math.abs(Math.sqrt(linXYZ.x*linXYZ.x + linXYZ.z*linXYZ.z));
     const maxSpeed = (this._playerState == PSTATE.WALKBACKWARD || this._playerState == PSTATE.WALKFORWARD) ? this._player.maxWalk : this._player.maxRun;
+
+    const maxFall = -7;
+    let newX = linXYZ.x;
+    let newY = linXYZ.y;
+    let newZ = linXYZ.z;
+
+    if (linXYZ.y < maxFall) {
+      newY = maxFall;
+    }
+
     const speeding = speed > maxSpeed;    
     if (speeding) {
       const ratio = maxSpeed / speed;
-      const newX = linXZ.x * ratio;
-      const newZ = linXZ.z * ratio;
-      this._player.physicsBody.setLinearVelocity(new Ammo.btVector3(newX, linVel.y(), newZ));
+      newX = linXYZ.x * ratio;
+      newZ = linXYZ.z * ratio;
     }
+    this._player.physicsBody.setLinearVelocity(new Ammo.btVector3(newX, newY, newZ));
+
 
     // Step world
     this._physicsWorld.stepSimulation(deltaTime, 10);
@@ -380,7 +459,7 @@ class OrbitTests {
 
         if (obj.isPlayer) {
     
-          if (y < -5) {
+          if (y < this._playerResetHeight) {
             this.resetCone();
           }
           const moveDelta = obj3d.position.clone();

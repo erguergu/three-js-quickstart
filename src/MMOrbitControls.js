@@ -19,7 +19,7 @@ const _changeEvent = { type: 'change' };
 const _startEvent = { type: 'start' };
 const _endEvent = { type: 'end' };
 
-const MMOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATEL: 0, DOLLY: 1, ROTATER: 2 };
+const MMOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, BACK: 3, FORWARD: 4, ROTATEL: 0, DOLLY: 1, ROTATER: 2 };
 const MMTOUCH = { ROTATEL: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATEL: 3 };
 
 class MMOrbitControls extends EventDispatcher {
@@ -84,6 +84,8 @@ class MMOrbitControls extends EventDispatcher {
 		// Speed of player movement
 		this.walkSpeed = 0.05;
 		this.runSpeed = 0.1;
+
+		this.autoRunOn = false;
 
 		// Speed of rotation if A or D key is pressed.
 		this.keyRotateSpeed = 15.0;
@@ -181,6 +183,7 @@ class MMOrbitControls extends EventDispatcher {
 				}
 				if (scope.backKeyDown) {
 					scope.isMovingBackward = true;
+					scope.autoRunOn = false;
 				} else {
 					scope.isMovingBackward = false;
 				}
@@ -193,6 +196,11 @@ class MMOrbitControls extends EventDispatcher {
 					scope.isMovingRight  = true;
 				} else {
 					scope.isMovingRight = false;
+				}
+
+				// cancel auto run if you start manual running
+				if (!scope.wasMovingForward && scope.autoRunOn && scope.isMovingForward) {
+					scope.autoRunOn = false;
 				}
 
 
@@ -249,10 +257,13 @@ class MMOrbitControls extends EventDispatcher {
 						// If we get here, it means we are strafing. Need to handle the
 						// FIRST frame of strafing (or the first frame of a change from strfing only
 						// to strafing and moving forward).
+						// This doesn't handle some stuff right. I can't remember for sure but it might be up above
+						// where something is going wrong, but flipping between different strafing directions goes
+						// wonky pretty fast.
 						const justStartedStrafing = (scope.isStrafing && !scope.wasStrafing) || (scope.isMovingBackward != scope.wasMovingBackward) || (scope.isMovingForward != scope.wasMovingForward);
 						if (justStartedStrafing) {
 							const leftRightMod = scope.isMovingLeft ? 90.0 : -90.0;
-							const forwardBackwardMod = (scope.isMovingForward || scope.isMovingBackward) ? 0.5 : 1.0;
+							const forwardBackwardMod = ((scope.isMovingForward || scope.autoRunOn) || scope.isMovingBackward) ? 0.5 : 1.0;
 							const backwardMod = scope.isMovingBackward ? -1.0 : 1.0;
 							const angle = 2 * Math.PI * ((leftRightMod * forwardBackwardMod * backwardMod) / 360);
 
@@ -324,7 +335,7 @@ class MMOrbitControls extends EventDispatcher {
 					this.player.applyQuaternion(sphereQuat);
 				}
 
-				const isMovingForwardOrStrafingForward = scope.isMovingForward || (scope.isStrafing && !scope.isMovingBackward);
+				const isMovingForwardOrStrafingForward = scope.isMovingForward || scope.autoRunOn || (scope.isStrafing && !scope.isMovingBackward);
 				if (isMovingForwardOrStrafingForward || scope.isMovingBackward || isJumping) {
 					const forwardBackward = isMovingForwardOrStrafingForward ? 1 : (scope.isMovingBackward ? -1 : 0);
 					const walkOrRunSpeed = scope.shiftKeyDown ? scope.runSpeed : scope.walkSpeed;
@@ -676,7 +687,11 @@ class MMOrbitControls extends EventDispatcher {
 					mouseAction = scope.mouseButtons.RIGHT;
 					scope.mouseRDown = true;
 					break;
+				case MMOUSE.BACK:
+					scope.autoRunOn = !scope.autoRunOn;
+					break;
 				default:
+					console.log(`mouse down:`, event.button);
 					mouseAction = - 1;
 			}
 			switch (mouseAction) {
