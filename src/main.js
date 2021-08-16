@@ -2,6 +2,7 @@
 //import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.118.1/build/three.module.js';
 import { MMOrbitControls } from './MMOrbitControls.js';
 import { HeightMapGenerator } from './HeightMap.js';
+import { ArrayResizer } from './ArrayResizer.js';
 import * as THREE from './three.module.js';
 
 // Player states
@@ -13,10 +14,12 @@ const ASTATE = { DISABLE_DEACTIVATION: 4 }
 class OrbitTests {
 
   constructor() {
-    this._Initialize();
+    new THREE.ImageBitmapLoader().load( './src/height.png', (texture) => {
+      this._Initialize({groundHeightMapTexture: texture});
+    });
   }
 
-  _Initialize() {
+  _Initialize(textures) {
 
     // need a scene
     this._scene = new THREE.Scene();
@@ -42,33 +45,6 @@ class OrbitTests {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     this._canv = document.getElementById('maindiv');
 
-    // textures
-    // I think this is old but let me see
-    // var bumpTexture = new THREE.ImageUtils.loadTexture( 'images/heightmap.png' );
-    new THREE.ImageBitmapLoader().load( './src/height.png', (texture) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.style.display = 'none';
-      canvas.style.height = '1920px';
-      canvas.style.width = '1920px';
-      console.log(`image`, texture);
-      try {
-        ctx.drawImage(texture, 0, 0);
-        for (let y = 1919; y < texture.height; y++ ) {
-          for (let x = 0; x < texture.width; x++) {
-            const thing = ctx.getImageData(x, y, 1, 1);
-            const avgColor = (thing.data[0] + thing.data[1] + thing.data[2]) / 3;
-            // okay so we can take the array of 
-          }
-        }
-      } catch (ex) {
-        console.log(`bad`, ex);
-      }
-    });
-
-
-
-
     // black background
     renderer.setClearColor("#000000");
 
@@ -92,12 +68,20 @@ class OrbitTests {
     // create objects
     const zDeg = 25 * (Math.PI/180); // 0.5 * Math.PI;
     const zDeg2 = (180-25) * (Math.PI/180);
-    this.createPlane("ground", 0x00FF00, [20,10], [0,0,0], [0,0,0], true);
-    this.createPlane("wall", 0x00FF00, [10,10], [14.5,2.125,0], [0,0,zDeg]);
-    this.createPlane("wall1", 0x00FF00, [10,10], [-14.5,-2.125,0], [0,0,zDeg]);
 
-    this._playerStartHeight = 10;
-    this._playerResetHeight = -10;
+    const flatArray = new Array(100*100);
+    const widthSegments = 512;
+    const heightSegments = 512;
+    const groundHeightMapTexture = textures.groundHeightMapTexture;
+    this.loadTexture(groundHeightMapTexture, widthSegments, heightSegments, flatArray);
+    
+    this.createPlane("ground", 0xCC22FF, [1000,1000], [0,0,0], [0,0,0], true, widthSegments, heightSegments, 120, flatArray);
+
+    //this.createPlane("wall", 0x00FFFF, [10,10], [14.5,2.125,0], [0,0,zDeg], false, 64, 64, 0, null);
+    //this.createPlane("wall1", 0xFFFF00, [10,10], [-14.5,-2.125,0], [0,0,zDeg], false, 64, 64, 0, null);
+
+    this._playerStartHeight = 20;
+    this._playerResetHeight = -80;
     this._player = this.createCone(0xFF0000, new THREE.Vector3(0, this._playerStartHeight, 0), true);
     this._playerState = PSTATE.IDLE;
 
@@ -132,29 +116,48 @@ class OrbitTests {
       renderer.render(this._scene, this._camera);
     };
     render();
-    const arr = [10,20,30,40];
-    console.log(this._shrinkRow(arr, 3));
   }
 
-  _splitToChunks(array, parts) {
-    let result = [];
-    for (let i = parts; i > 0; i--) {
-        result.push(array.splice(0, Math.ceil(array.length / i)));
-    }
-    return result;
-  }
+  loadTexture = (texture, desiredWidth, desiredHeight, flatArray) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.style.display = 'none';
+    canvas.height = texture.height;
+    canvas.width = texture.width;
+    const initial2d = new Array(texture.width);
+    try {
+      ctx.drawImage(texture, 0, 0);
 
-  _shrinkRow(inputArray, outArrayLength) {
-    
-    const copy = inputArray.slice();
-    const outThing = [];
-    const chunks = this._splitToChunks(copy, outArrayLength);
-    console.log(`chunks`, chunks);
+      // okay so loop through the returned image
+      // but need to put that in a separate 2d array I think...
+      // then convert that 2d array into the desired size (need params)
+      // then convert that resized 2d array into a flat array...
+      for (let y = 0; y < texture.height; y++ ) {
+        const row = new Array(texture.height);
+        initial2d[y] = row;
+        for (let x = 0; x < texture.width; x++) {
+          const thing = ctx.getImageData(x, y, 1, 1);
+          const avgColor = (thing.data[0] + thing.data[1] + thing.data[2]) / 3;
 
-    for (const chunk of chunks) {
-      outThing.push(chunk.reduce((a, b) => a + b) / chunk.length);
+          // okay so we can take the average of these levels
+          row[x] = avgColor;
+        }
+      }
+
+      // now initial2d should be the average colors of all the pixels
+      // resize it:
+      const arrRes = new ArrayResizer();
+      const desired2d = arrRes.resizeMatrix(initial2d, desiredWidth, desiredHeight);
+      let flatIndex = 0;
+      for (let y = 0; y < desired2d.length; y++) {
+        const row = desired2d[y];
+        for (let x = 0; x < row.length; x++){
+          flatArray[flatIndex++] = row[x];
+        }
+      }
+    } catch (ex) {
+      console.log(`bad`, ex);
     }
-    return outThing;
   }
 
   _movePlayerCallback = (moveDelta) => {
@@ -167,9 +170,10 @@ class OrbitTests {
     const body = this._player.physicsBody;
 
     // here we apply ONLY a force vector. then in the tick we have to clamp linear velocity manually
-    const scalingFactor = 2;
-    const resultantImpulse = new Ammo.btVector3(moveDelta.x, moveDelta.y*20, moveDelta.z)
-    resultantImpulse.op_mul(scalingFactor);
+    const totalScalingFactor = 2;
+    const xyScalingFactor = 2.5;
+    const resultantImpulse = new Ammo.btVector3(moveDelta.x*xyScalingFactor, moveDelta.y*20, moveDelta.z*xyScalingFactor)
+    resultantImpulse.op_mul(totalScalingFactor);
 
     body.applyCentralImpulse(resultantImpulse);
 
@@ -279,7 +283,7 @@ class OrbitTests {
     return retVal;
   }
 
-  createPlane = (name, color, scale, position, rotation, genHeightMap) => {
+  createPlane = (name, color, scale, position, rotation, genHeightMap, widthSegments, heightSegments, terrainMaxHeight, heightMapArr) => {
 
     //let xScale, yScale, zScale, xPos, yPos, zPos, xRot, yRot, zRot;
     const mass = 0;
@@ -292,17 +296,18 @@ class OrbitTests {
 
     const obj3d = new THREE.Object3D();
     const segmentMult = 4;
-    const xSegments = xScale*segmentMult;
-    const zSegments = zScale*segmentMult;
+    const xSegments = widthSegments;//xScale*segmentMult;
+    const zSegments = heightSegments;//zScale*segmentMult;
     const geometry = new THREE.PlaneGeometry(xScale, zScale, xSegments-1,zSegments-1/*xScale*3, zScale*3*/);
     geometry.rotateX( - Math.PI / 2 );
     
     const hmap = new HeightMapGenerator();
     let hmapData = [];
-    const terrainMinHeight = 0;
-    const terrainMaxHeight = .25;
+    const terrainMinHeight = 0; // has to be zero right now or my physics will derp i think...
+    //const terrainMaxHeight = 8;
     if (genHeightMap) {
-      hmapData = hmap.generateSampleWavyHeightData(xSegments, zSegments, terrainMinHeight, terrainMaxHeight);
+      //hmapData = hmap.generateSampleWavyHeightData(xSegments, zSegments, terrainMinHeight, terrainMaxHeight);
+      hmapData = hmap.generateTextureHeightData(widthSegments, heightSegments, terrainMinHeight, terrainMaxHeight, heightMapArr);
     } else {
       hmapData = hmap.generateFlatHeightData(xSegments, zSegments);
     }
@@ -310,6 +315,7 @@ class OrbitTests {
 
     const wireframe = new THREE.WireframeGeometry(geometry);
     const line = new THREE.LineSegments(wireframe);
+    line.position.y = 0 - ((terrainMaxHeight - terrainMinHeight) / 2);
 
     const material = new THREE.LineBasicMaterial({
       color: color,
@@ -333,7 +339,6 @@ class OrbitTests {
     obj3d.rotateOnAxis(zAxis, zRot);
 
     const obj3dQuat = obj3d.quaternion;
-    console.log(`obj3dquat:`, obj3dQuat);
 
     this._scene.add(obj3d);
 
@@ -350,6 +355,7 @@ class OrbitTests {
     //let colShape = genHeightMap ? hmap.createTerrainShape(hmapData, xSegments, zSegments, terrainMinHeight, terrainMaxHeight, xScale, zScale) : new Ammo.btBoxShape(new Ammo.btVector3(xScale/2, yScale, zScale/2));
     let colShape = hmap.createTerrainShape(hmapData, xSegments, zSegments, terrainMinHeight, terrainMaxHeight, xScale, zScale);
     colShape.setMargin(0.05);
+
     let localInertia = new Ammo.btVector3(0, 0, 0);
     colShape.calculateLocalInertia(mass, localInertia);
     let rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
@@ -401,7 +407,6 @@ class OrbitTests {
     // then we need to do whatever math is needed to scale down the x and z values so that we only go
     // at max speed.
     // const vel = body.getLinearVelocity();
-    // console.log(`getLinearVelocity: x = ${vel.x()}, z = ${vel.z()}`);
     const linVel = this._player.physicsBody.getLinearVelocity();
     const linXYZ = { x: linVel.x(), y: linVel.y(), z: linVel.z() };
     const speed = Math.abs(Math.sqrt(linXYZ.x*linXYZ.x + linXYZ.z*linXYZ.z));

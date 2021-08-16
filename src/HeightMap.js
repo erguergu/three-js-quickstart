@@ -49,6 +49,33 @@ class HeightMapGenerator {
         return data;
     }
 
+    generateTextureHeightData = ( width, depth, minHeight, maxHeight, textureArray ) => {
+
+        // Generates the height data (a sinus wave)
+
+        const size = width * depth;
+        const data = new Float32Array( size );
+
+        const hRange = maxHeight - minHeight;
+        const mult = hRange / 255.0;
+
+        let p = 0;
+
+        for ( let j = 0; j < textureArray.length; j++ ) {
+
+            // 1 to 2
+            // hrange is 1
+            // value of 128 out of 255
+            // 1 / 255 = x
+            // return x * 128
+            data[j] = (textureArray[j] * mult) + minHeight;
+        }
+        console.log(`width: ${width}, depth: ${depth}`);
+
+        return data;
+
+    }
+
     generateSampleWavyHeightData = ( width, depth, minHeight, maxHeight ) => {
 
         // Generates the height data (a sinus wave)
@@ -139,8 +166,6 @@ class HeightMapGenerator {
         const scaleX = terrainWidthExtents / ( terrainWidth - 1 );
         const scaleZ = terrainDepthExtents / ( terrainDepth - 1 );
         heightFieldShape.setLocalScaling( new Ammo.btVector3( scaleX, 1, scaleZ ) );
-    
-        //heightFieldShape.setMargin( 0.05 );
     
         return heightFieldShape;
     
