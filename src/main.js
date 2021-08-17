@@ -14,8 +14,8 @@ const ASTATE = { DISABLE_DEACTIVATION: 4 }
 class OrbitTests {
 
   constructor() {
-    new THREE.ImageBitmapLoader().load( './src/height.png', (texture) => {
-      this._Initialize({groundHeightMapTexture: texture});
+    new THREE.ImageBitmapLoader().load('./src/heightSimplex1920.png', (texture) => {
+      this._Initialize({ groundHeightMapTexture: texture });
     });
   }
 
@@ -65,17 +65,30 @@ class OrbitTests {
       this._camera.updateProjectionMatrix();
     });
 
-    // create objects
-    const zDeg = 25 * (Math.PI/180); // 0.5 * Math.PI;
-    const zDeg2 = (180-25) * (Math.PI/180);
+    //environment cube texture
+    const cubeTextureLoader = new THREE.CubeTextureLoader();
+    this._cubeTexture = cubeTextureLoader.load([
+      './src/stars1920.png',
+      './src/stars1920.png',
+      './src/stars1920.png',
+      './src/stars1920.png',
+      './src/stars1920.png',
+      './src/stars1920.png'
+    ]);
+    this._scene.background = this._cubeTexture;
 
-    const flatArray = new Array(100*100);
+    // create objects
+    const zDeg = 25 * (Math.PI / 180); // 0.5 * Math.PI;
+    const zDeg2 = (180 - 25) * (Math.PI / 180);
+
+    const flatArray = new Array(100 * 100);
     const widthSegments = 512;
     const heightSegments = 512;
     const groundHeightMapTexture = textures.groundHeightMapTexture;
     this.loadTexture(groundHeightMapTexture, widthSegments, heightSegments, flatArray);
-    
-    this.createPlane("ground", 0xCC22FF, [1000,1000], [0,0,0], [0,0,0], true, widthSegments, heightSegments, 120, flatArray);
+
+    const terrainHeight = 50;
+    this.createPlane("ground", 0xDD55FF, [1000, 1000], [0, 0, 0], [0, 0, 0], true, widthSegments, heightSegments, terrainHeight, flatArray);
 
     //this.createPlane("wall", 0x00FFFF, [10,10], [14.5,2.125,0], [0,0,zDeg], false, 64, 64, 0, null);
     //this.createPlane("wall1", 0xFFFF00, [10,10], [-14.5,-2.125,0], [0,0,zDeg], false, 64, 64, 0, null);
@@ -132,7 +145,7 @@ class OrbitTests {
       // but need to put that in a separate 2d array I think...
       // then convert that 2d array into the desired size (need params)
       // then convert that resized 2d array into a flat array...
-      for (let y = 0; y < texture.height; y++ ) {
+      for (let y = 0; y < texture.height; y++) {
         const row = new Array(texture.height);
         initial2d[y] = row;
         for (let x = 0; x < texture.width; x++) {
@@ -151,7 +164,7 @@ class OrbitTests {
       let flatIndex = 0;
       for (let y = 0; y < desired2d.length; y++) {
         const row = desired2d[y];
-        for (let x = 0; x < row.length; x++){
+        for (let x = 0; x < row.length; x++) {
           flatArray[flatIndex++] = row[x];
         }
       }
@@ -172,7 +185,7 @@ class OrbitTests {
     // here we apply ONLY a force vector. then in the tick we have to clamp linear velocity manually
     const totalScalingFactor = 2;
     const xyScalingFactor = 2.5;
-    const resultantImpulse = new Ammo.btVector3(moveDelta.x*xyScalingFactor, moveDelta.y*20, moveDelta.z*xyScalingFactor)
+    const resultantImpulse = new Ammo.btVector3(moveDelta.x * xyScalingFactor, moveDelta.y * 20, moveDelta.z * xyScalingFactor)
     resultantImpulse.op_mul(totalScalingFactor);
 
     body.applyCentralImpulse(resultantImpulse);
@@ -192,35 +205,50 @@ class OrbitTests {
   _walkForward = () => {
     if (this._playerState != PSTATE.WALKFORWARD) {
       this._playerState = PSTATE.WALKFORWARD;
-      this._player.obj3d.children[0].material.color.setHex(0x00AA00);
+      const color = 0x00AA00;
+      this._player.obj3d.children[0].material.color.setHex(color);
+      this._player.obj3d.children[0].material.emissive.setHex(color*.5);
+      this._player.obj3d.children[0].material.specular.setHex(color*.5);
     }
   }
 
   _walkBackward = () => {
     if (this._playerState != PSTATE.WALKBACKWARD) {
       this._playerState = PSTATE.WALKBACKWARD;
-      this._player.obj3d.children[0].material.color.setHex(0x666666);
+      const color = 0x666666;
+      this._player.obj3d.children[0].material.color.setHex(color);
+      this._player.obj3d.children[0].material.emissive.setHex(color*.5);
+      this._player.obj3d.children[0].material.specular.setHex(color*.5);
     }
   }
 
   _runForward = () => {
     if (this._playerState != PSTATE.RUNFORWARD) {
       this._playerState = PSTATE.RUNFORWARD;
-      this._player.obj3d.children[0].material.color.setHex(0x00FF00);
+      const color = 0x00FF00;
+      this._player.obj3d.children[0].material.color.setHex(color);
+      this._player.obj3d.children[0].material.emissive.setHex(color*.5);
+      this._player.obj3d.children[0].material.specular.setHex(color*.5);
     }
   }
 
   _runBackward = () => {
     if (this._playerState != PSTATE.RUNBACKWARD) {
       this._playerState = PSTATE.RUNBACKWARD;
-      this._player.obj3d.children[0].material.color.setHex(0xDDDDDD);
+      const color = 0xDDDDDD;
+      this._player.obj3d.children[0].material.color.setHex(color);
+      this._player.obj3d.children[0].material.emissive.setHex(color*.5);
+      this._player.obj3d.children[0].material.specular.setHex(color*.5);
     }
   }
 
   _stopMoving = () => {
     if (this._playerState != PSTATE.IDLE) {
       this._playerState = PSTATE.IDLE;
-      this._player.obj3d.children[0].material.color.setHex(0xFF0000);
+      const color = 0xFF0000;
+      this._player.obj3d.children[0].material.color.setHex(color);
+      this._player.obj3d.children[0].material.emissive.setHex(color*.5);
+      this._player.obj3d.children[0].material.specular.setHex(color*.5);
     }
   }
 
@@ -246,7 +274,22 @@ class OrbitTests {
     // Create the three js object
     const obj3d = new THREE.Object3D();
     const geometry = new THREE.ConeGeometry(radius, .5, 32);
-    const material = new THREE.MeshBasicMaterial({ color: color });
+    const material = new THREE.MeshPhongMaterial( { 
+      transparent: false,
+      opacity: 1,
+
+
+      color: color, 
+      emissive: color*.5, 
+      specular: color*.5,
+      shininess: 67,
+      flatShading: true,
+
+      envMap: this._cubeTexture,
+      reflectivity: .4,
+
+      side: THREE.DoubleSide
+    } );
     const cone = new THREE.Mesh(geometry, material);
     cone.position.y += .125;
     cone.rotation.x += Math.PI / 2;
@@ -260,7 +303,7 @@ class OrbitTests {
     transform.setOrigin(new Ammo.btVector3(position.x, position.y, position.z));
     transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
     const motionState = new Ammo.btDefaultMotionState(transform);
-    let colShape = new Ammo.btSphereShape(radius*2);
+    let colShape = new Ammo.btSphereShape(radius * 2);
     colShape.setMargin(0.05);
     let localInertia = new Ammo.btVector3(0, 0, 0);
     colShape.calculateLocalInertia(mass, localInertia);
@@ -270,7 +313,7 @@ class OrbitTests {
     body.setRollingFriction(.10);
     //body.setDamping(.2, 0);
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
-    body.setAngularFactor( 0, 0, 0 );
+    body.setAngularFactor(0, 0, 0);
     //body.setLinearFactor( 0, 0, 0 );
     this._physicsWorld.addRigidBody(body);
 
@@ -298,9 +341,9 @@ class OrbitTests {
     const segmentMult = 4;
     const xSegments = widthSegments;//xScale*segmentMult;
     const zSegments = heightSegments;//zScale*segmentMult;
-    const geometry = new THREE.PlaneGeometry(xScale, zScale, xSegments-1,zSegments-1/*xScale*3, zScale*3*/);
-    geometry.rotateX( - Math.PI / 2 );
-    
+    const geometry = new THREE.PlaneGeometry(xScale, zScale, xSegments - 1, zSegments - 1/*xScale*3, zScale*3*/);
+    geometry.rotateX(- Math.PI / 2);
+
     const hmap = new HeightMapGenerator();
     let hmapData = [];
     const terrainMinHeight = 0; // has to be zero right now or my physics will derp i think...
@@ -313,25 +356,53 @@ class OrbitTests {
     }
     hmap.applyHeightToPlane(geometry, hmapData);
 
-    const wireframe = new THREE.WireframeGeometry(geometry);
-    const line = new THREE.LineSegments(wireframe);
-    line.position.y = 0 - ((terrainMaxHeight - terrainMinHeight) / 2);
+    // const group = new THREE.Group();
+    // const lineMaterial = new THREE.LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 0.5 } );
+    // const meshMaterial = new THREE.MeshPhongMaterial( { color: 0x156289, emissive: 0x072534, side: DoubleSide, flatShading: true } );
+    // group.add( new THREE.LineSegments( geometry, lineMaterial ) );
+    // group.add( new THREE.Mesh( geometry, meshMaterial ) );
+    //const mesh = group;
 
-    const material = new THREE.LineBasicMaterial({
-      color: color,
-      opacity: 0.25,
-      transparent: true
-    });
-    line.material = material;
-    line.name = name;
+    const doWireframe = true;
+    const doMesh = true;
+    const mesh = new THREE.Object3D();
+
+    if (doWireframe) {
+      const wireframe = new THREE.WireframeGeometry(geometry);
+      const lineMat = new THREE.LineBasicMaterial({ color: color, opacity: 0.5, transparent: true });
+      mesh.add(new THREE.LineSegments(wireframe, lineMat));
+    }
+    if (doMesh) {
+      const meshMaterial = new THREE.MeshPhongMaterial( { 
+        transparent: true,
+        opacity: .9,
+
+
+        color: 0x7f00ff, 
+        emissive: 0xff, 
+        specular: 0x191900,
+        shininess: 67,
+        flatShading: true,
+
+        envMap: this._cubeTexture,
+        reflectivity: .6,
+
+        side: THREE.DoubleSide
+      } );
+      mesh.add( new THREE.Mesh( geometry, meshMaterial ) );
+    }
+
+    mesh.position.y = 0 - ((terrainMaxHeight - terrainMinHeight) / 2);
+
+    mesh.name = name;
     const xAxis = new THREE.Vector3(1, 0, 0);
     const yAxis = new THREE.Vector3(0, 1, 0);
     const zAxis = new THREE.Vector3(0, 0, 1);
     //line.rotateOnAxis(xAxis, 0.5 * Math.PI);
-    line.position.z = yScale/2;
-    obj3d.add(line);
+    mesh.position.z = yScale / 2;
+    obj3d.add(mesh);
 
-    obj3d.position.set(xPos,yPos,zPos);
+    obj3d.position.set(xPos, yPos, zPos);
     console.log(`${name} position`, obj3d.position);
 
     obj3d.rotateOnAxis(xAxis, xRot);
@@ -342,7 +413,7 @@ class OrbitTests {
 
     this._scene.add(obj3d);
 
-    
+
     // Create the ammo js object
     const transform = new Ammo.btTransform();
     transform.setIdentity();
@@ -351,7 +422,7 @@ class OrbitTests {
     transform.setRotation(new Ammo.btQuaternion(obj3dQuat.x, obj3dQuat.y, obj3dQuat.z, obj3dQuat.w));
     transform.setOrigin(new Ammo.btVector3(xPos, yPos, zPos));
     const motionState = new Ammo.btDefaultMotionState(transform);
-    
+
     //let colShape = genHeightMap ? hmap.createTerrainShape(hmapData, xSegments, zSegments, terrainMinHeight, terrainMaxHeight, xScale, zScale) : new Ammo.btBoxShape(new Ammo.btVector3(xScale/2, yScale, zScale/2));
     let colShape = hmap.createTerrainShape(hmapData, xSegments, zSegments, terrainMinHeight, terrainMaxHeight, xScale, zScale);
     colShape.setMargin(0.05);
@@ -363,13 +434,13 @@ class OrbitTests {
     body.setFriction(1); // was 1
     body.setRollingFriction(1); // was 2
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
-    body.setAngularFactor( 0, 0, 0 );
+    body.setAngularFactor(0, 0, 0);
     this._physicsWorld.addRigidBody(body);
 
     const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: false, planeGeo: geometry };
     this._rigidBodies.push(retVal);
 
-    
+
     return retVal;
   }
 
@@ -409,7 +480,7 @@ class OrbitTests {
     // const vel = body.getLinearVelocity();
     const linVel = this._player.physicsBody.getLinearVelocity();
     const linXYZ = { x: linVel.x(), y: linVel.y(), z: linVel.z() };
-    const speed = Math.abs(Math.sqrt(linXYZ.x*linXYZ.x + linXYZ.z*linXYZ.z));
+    const speed = Math.abs(Math.sqrt(linXYZ.x * linXYZ.x + linXYZ.z * linXYZ.z));
     const maxSpeed = (this._playerState == PSTATE.WALKBACKWARD || this._playerState == PSTATE.WALKFORWARD) ? this._player.maxWalk : this._player.maxRun;
 
     const maxFall = -7;
@@ -421,7 +492,7 @@ class OrbitTests {
       newY = maxFall;
     }
 
-    const speeding = speed > maxSpeed;    
+    const speeding = speed > maxSpeed;
     if (speeding) {
       const ratio = maxSpeed / speed;
       newX = linXYZ.x * ratio;
@@ -463,7 +534,7 @@ class OrbitTests {
         obj3d.position.set(x, y, z);
 
         if (obj.isPlayer) {
-    
+
           if (y < this._playerResetHeight) {
             this.resetCone();
           }
@@ -471,7 +542,7 @@ class OrbitTests {
           moveDelta.sub(oldObj3dPos);
           this._camera.position.add(moveDelta);
         }
-        
+
       }
     }
 
