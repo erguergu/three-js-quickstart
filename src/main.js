@@ -14,7 +14,7 @@ const ASTATE = { DISABLE_DEACTIVATION: 4 }
 class OrbitTests {
 
   constructor() {
-    new THREE.ImageBitmapLoader().load('./src/heightSimplex1920.png', (texture) => {
+    new THREE.ImageBitmapLoader().load('./src/height128.png', (texture) => {
       this._Initialize({ groundHeightMapTexture: texture });
     });
   }
@@ -36,6 +36,8 @@ class OrbitTests {
     this._tmpTrans = new Ammo.btTransform();
 
     this.setupPhysicsWorld();
+    this._cbContactPairResult = null; // for collision detection
+    this.setupContactPairResultCallback();
 
     // camera aspect ratio starts out matching viewport aspect ratio
     this._camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
@@ -88,7 +90,7 @@ class OrbitTests {
     this.loadTexture(groundHeightMapTexture, widthSegments, heightSegments, flatArray);
 
     const terrainHeight = 50;
-    this.createPlane("ground", 0xDD55FF, [1000, 1000], [0, 0, 0], [0, 0, 0], true, widthSegments, heightSegments, terrainHeight, flatArray);
+    this._groundPlane = this.createPlane("ground", 0xDD55FF, [1000, 1000], [0, 0, 0], [0, 0, 0], true, widthSegments, heightSegments, terrainHeight, flatArray);
 
     //this.createPlane("wall", 0x00FFFF, [10,10], [14.5,2.125,0], [0,0,zDeg], false, 64, 64, 0, null);
     //this.createPlane("wall1", 0xFFFF00, [10,10], [-14.5,-2.125,0], [0,0,zDeg], false, 64, 64, 0, null);
@@ -184,8 +186,18 @@ class OrbitTests {
 
     // here we apply ONLY a force vector. then in the tick we have to clamp linear velocity manually
     const totalScalingFactor = 2;
-    const xyScalingFactor = 2.5;
-    const resultantImpulse = new Ammo.btVector3(moveDelta.x * xyScalingFactor, moveDelta.y * 20, moveDelta.z * xyScalingFactor)
+    const xzScalingFactor = 2.5;
+    const yScalingFactor = 40;
+
+    const calcImpulse = { 
+      x: moveDelta.y === 0 ? (moveDelta.x * xzScalingFactor) : 0,
+      y: moveDelta.y * yScalingFactor,
+      z: moveDelta.y === 0 ? (moveDelta.z * xzScalingFactor) : 0
+
+    };
+
+    //const resultantImpulse = new Ammo.btVector3(moveDelta.x * xyScalingFactor, moveDelta.y * 20, moveDelta.z * xyScalingFactor)
+    const resultantImpulse = new Ammo.btVector3(calcImpulse.x, calcImpulse.y, calcImpulse.z);
     resultantImpulse.op_mul(totalScalingFactor);
 
     body.applyCentralImpulse(resultantImpulse);
@@ -194,12 +206,54 @@ class OrbitTests {
 
   _isTouchingGround = () => {
 
-    // here we are finding out if the player is touching the ground by aking
-    // the engine if ANY collisions are occurring anywhere in the entire simulation
-    // need to fix this soon.
-    const numMan = this._physicsWorld.getDispatcher().getNumManifolds();
-    return numMan > 0;
+    // Okay I think I know how to fix all of this. I can do one of two things:
+    // 1. figure out if the bottom of the player is touching something, not sure how to do that.
+    // 2. maybe a hack, but could also have two ammo objects, one that represents the player
+    //    and is a standard rigid body, and the other is a massless collision trigger at the
+    //    bottom of the player, like the "feet", which signals whether or not an impulse should
+    //    be applied. In order to accomplish this I need to get that guy's contact pair stuff
+    //    so that I know what two objects are touching at any time, and I also need to figure
+    //    out how to add a massless object and lock it to where the player's feet should be.
+    //    Hopefully that object can be massless and also trigger the contact pair callback...
+    //    Oh I just realized mass only affects if the object will move. I think I need to do 
+    //    something more if I want the object to serve only as a trigger and not impact other
+    //    rigid bodies...
+    
+    return this._betterDetectCollision();
 
+  }
+
+  _betterDetectCollision() {
+    this._cbContactPairResult.hasContact = false;
+    this._physicsWorld.contactPairTest(this._player.ammoFoot, this._groundPlane.physicsBody, this._cbContactPairResult);
+    const feetOnGround = this._cbContactPairResult.hasContact;
+    const feetLocation = this.getPhysObjCoords(this._player.ammoFoot);
+    console.log(`we ${feetOnGround ? 'are' : 'are not'} touching the ground... right?`, feetLocation);
+    return feetOnGround;
+  }
+
+  _detectCollision() {
+
+    const dispatcher = this._physicsWorld.getDispatcher();
+    const numManifolds = dispatcher.getNumManifolds();
+    let totalContacts = 0;
+  
+    for ( let i = 0; i < numManifolds; i ++ ) {
+  
+      const contactManifold = dispatcher.getManifoldByIndexInternal( i );
+      const numContacts = contactManifold.getNumContacts();
+      totalContacts += numContacts;
+  
+      for ( let j = 0; j < numContacts; j++ ) {
+  
+        let contactPoint = contactManifold.getContactPoint( j );
+        let distance = contactPoint.getDistance();
+  
+        //console.log({manifoldIndex: i, contactIndex: j, distance: distance});
+  
+      }  
+    }  
+    return totalContacts > 0;
   }
 
   _walkForward = () => {
@@ -269,11 +323,10 @@ class OrbitTests {
   createCone = (color, position, isPlayer) => {
 
     const radius = .1;
-    const mass = 1;
+    const mass = 2;
 
     // Create the three js object
     const obj3d = new THREE.Object3D();
-    const geometry = new THREE.ConeGeometry(radius, .5, 32);
     const material = new THREE.MeshPhongMaterial( { 
       transparent: false,
       opacity: 1,
@@ -290,10 +343,35 @@ class OrbitTests {
 
       side: THREE.DoubleSide
     } );
-    const cone = new THREE.Mesh(geometry, material);
-    cone.position.y += .125;
-    cone.rotation.x += Math.PI / 2;
-    obj3d.add(cone);
+
+    const capsuleHeight = .75;
+
+    let foot = null;
+    const createCone = false;
+    if (createCone) {
+      const geometry = new THREE.ConeGeometry(radius, .5, 32);
+      const cone = new THREE.Mesh(geometry, material);
+      cone.position.y += 0.125;
+      cone.rotation.x += Math.PI / 2;
+      obj3d.add(cone);
+    } else {
+      // create our "capsule"
+      const geometry = new THREE.CylinderGeometry( radius*3, radius*3, capsuleHeight);
+      const cylinder = new THREE.Mesh(geometry, material);
+      cylinder.position.y -= .125;
+      obj3d.add(cylinder);
+
+      const cylinderBottomGeo = new THREE.SphereGeometry( radius*3, 10, 10);
+      const cylinderBottom = new THREE.Mesh(cylinderBottomGeo, material);
+      cylinderBottom.position.y -= .4125;
+      obj3d.add(cylinderBottom);
+
+      // create the "feet"
+      const footGeo = new THREE.SphereGeometry(radius, 10, 10);
+      foot = new THREE.Mesh(footGeo, material);
+      foot.position.y -= .65;
+      obj3d.add(foot);
+    }
     this._scene.add(obj3d);
     obj3d.position.copy(position);
 
@@ -303,24 +381,56 @@ class OrbitTests {
     transform.setOrigin(new Ammo.btVector3(position.x, position.y, position.z));
     transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
     const motionState = new Ammo.btDefaultMotionState(transform);
-    let colShape = new Ammo.btSphereShape(radius * 2);
+    let colShape = null;
+
+    if (createCone) {
+      colShape = new Ammo.btSphereShape(radius * 2);
+    } else {
+      colShape = new Ammo.btCapsuleShape(radius*3, capsuleHeight);
+    }
     colShape.setMargin(0.05);
     let localInertia = new Ammo.btVector3(0, 0, 0);
     colShape.calculateLocalInertia(mass, localInertia);
     let rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
     let body = new Ammo.btRigidBody(rbInfo);
-    body.setFriction(.4);
-    body.setRollingFriction(.10);
+    body.setFriction(.4); //.4
+    body.setRollingFriction(.10); // .1
     //body.setDamping(.2, 0);
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
     body.setAngularFactor(0, 0, 0);
     //body.setLinearFactor( 0, 0, 0 );
     this._physicsWorld.addRigidBody(body);
 
+    // add foot physics
+    // const footTrans = new Ammo.btTransform();
+    // footTrans.setIdentity();
+    // footTrans.setOrigin(foot.position.x, foot.position.y, foot.position.z);
+    // footTrans.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
+    // const footMotionState = new Ammo.btDefaultMotionState(footTrans);
+    // const footShape = new Ammo.btSphereShape(radius);
+    // footShape.setMargin(.05);
+    // footShape.calculateLocalInertia(mass, localInertia);
+    // let footRbInfo = new Ammo.btRigidBodyConstructionInfo(mass, footMotionState, footShape, localInertia);
+    // let footBody = new Ammo.btRigidBody(footRbInfo);
+    // footBody.setFriction(0);
+    // footBody.setRollingFriction(0);
+    // footBody.setActivationState(ASTATE.DISABLE_DEACTIVATION);
+    // footBody.setAngularFactor(0,0,0);
+    // footBody.setCollisionFlags(1); // static
+    
+    const footShape = new Ammo.btSphereShape(radius);
+    const footBody = new Ammo.btGhostObject();
+    footBody.setCollisionShape(footShape);
+
+    this._physicsWorld.addCollisionObject(footBody);
+
+
+    console.log(`foot is static:`, footBody.isStaticObject());
+
     const maxWalk = 2.5;
     const maxRun = 4.5;
 
-    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: isPlayer, maxWalk: maxWalk, maxRun: maxRun };
+    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: isPlayer, maxWalk: maxWalk, maxRun: maxRun, threeFoot: foot, ammoFoot: footBody };
     this._rigidBodies.push(retVal);
 
     return retVal;
@@ -432,7 +542,7 @@ class OrbitTests {
     let rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
     const body = new Ammo.btRigidBody(rbInfo);
     body.setFriction(1); // was 1
-    body.setRollingFriction(1); // was 2
+    body.setRollingFriction(1); // was 1
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
     body.setAngularFactor(0, 0, 0);
     this._physicsWorld.addRigidBody(body);
@@ -453,6 +563,20 @@ class OrbitTests {
     this._player.physicsBody.setMotionState(motionState);
   }
 
+  syncAmmoFootToThreeFoot = (ammoFoot, threeFoot) => {
+    const transform = new Ammo.btTransform();
+    transform.setIdentity();
+    const worldFoot = new THREE.Vector3();
+    threeFoot.getWorldPosition(worldFoot);
+    const x = worldFoot.x;
+    const y = worldFoot.y;
+    const z = worldFoot.z;
+    transform.setOrigin(new Ammo.btVector3(x, y, z));
+    transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
+    ammoFoot.setWorldTransform(transform);
+    console.log(`I should have set ammoFoot's xyz to ${x},${y},${z}`, ammoFoot);
+  }
+
   setupPhysicsWorld = () => {
 
     const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration(),
@@ -462,7 +586,19 @@ class OrbitTests {
 
     this._physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
     this._physicsWorld.setGravity(new Ammo.btVector3(0, -9, 0));
+    console.log(`physicsWOrld`, this._physicsWorld);
 
+  }
+
+  getPhysObjCoords = (objAmmo) => {
+    const myMotionState = objAmmo.getMotionState();
+    myMotionState.getWorldTransform(this._tmpTrans);
+    const ammoPosInWorldCoords = this._tmpTrans.getOrigin();
+    const x = ammoPosInWorldCoords.x();
+    const y = ammoPosInWorldCoords.y();
+    const z = ammoPosInWorldCoords.z();
+
+    return {x: x, y: y, z: z};
   }
 
   updatePhysics = (deltaTime) => {
@@ -515,6 +651,8 @@ class OrbitTests {
 
       // get the three js object
       const obj3d = obj.obj3d;
+      const threeFoot = obj.threeFoot;
+      const ammoFoot = obj.ammoFoot;
 
       // figure out location/rotation of the given physics object
       const myMotionState = objAmmo.getMotionState();
@@ -535,6 +673,9 @@ class OrbitTests {
 
         if (obj.isPlayer) {
 
+          // NOW, set the static "foot" object to match the threejs foot counterpart
+          this.syncAmmoFootToThreeFoot(ammoFoot, threeFoot);
+
           if (y < this._playerResetHeight) {
             this.resetCone();
           }
@@ -546,6 +687,73 @@ class OrbitTests {
       }
     }
 
+  }
+
+  setupContactPairResultCallback = () => {
+
+    this._cbContactPairResult = new Ammo.ConcreteContactResultCallback();
+  
+    this._cbContactPairResult.hasContact = false;
+  
+    this._cbContactPairResult.addSingleResult = function(cp, colObj0Wrap, partId0, index0, colObj1Wrap, partId1, index1){
+  
+      let contactPoint = Ammo.wrapPointer( cp, Ammo.btManifoldPoint );
+  
+      const distance = contactPoint.getDistance();
+  
+      if( distance > 0 ) return;
+  
+      this.hasContact = true;
+  
+    }
+  
+  }
+  
+  setupContactResultCallback = () => {
+
+    cbContactResult = new Ammo.ConcreteContactResultCallback();
+  
+    cbContactResult.addSingleResult = function(cp, colObj0Wrap, partId0, index0, colObj1Wrap, partId1, index1){
+  
+      let contactPoint = Ammo.wrapPointer( cp, Ammo.btManifoldPoint );
+  
+      const distance = contactPoint.getDistance();
+  
+      if( distance > 0 ) return;
+  
+      let colWrapper0 = Ammo.wrapPointer( colObj0Wrap, Ammo.btCollisionObjectWrapper );
+      let rb0 = Ammo.castObject( colWrapper0.getCollisionObject(), Ammo.btRigidBody );
+  
+      let colWrapper1 = Ammo.wrapPointer( colObj1Wrap, Ammo.btCollisionObjectWrapper );
+      let rb1 = Ammo.castObject( colWrapper1.getCollisionObject(), Ammo.btRigidBody );
+  
+      let threeObject0 = rb0.threeObject;
+      let threeObject1 = rb1.threeObject;
+  
+      let tag, localPos, worldPos
+  
+      if( threeObject0.userData.tag != "ball" ){
+  
+        tag = threeObject0.userData.tag;
+        localPos = contactPoint.get_m_localPointA();
+        worldPos = contactPoint.get_m_positionWorldOnA();
+  
+      }
+      else{
+  
+        tag = threeObject1.userData.tag;
+        localPos = contactPoint.get_m_localPointB();
+        worldPos = contactPoint.get_m_positionWorldOnB();
+  
+      }
+  
+      let localPosDisplay = {x: localPos.x(), y: localPos.y(), z: localPos.z()};
+      let worldPosDisplay = {x: worldPos.x(), y: worldPos.y(), z: worldPos.z()};
+  
+      console.log( { tag, localPosDisplay, worldPosDisplay } );
+  
+    }
+  
   }
 
 }
