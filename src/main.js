@@ -11,10 +11,33 @@ const PSTATE = { IDLE: "Idle", WALKFORWARD: "WalkForward", RUNFORWARD: "RunForwa
 // Ammo JS states
 const ASTATE = { DISABLE_DEACTIVATION: 4 }
 
+const WorldParams = {
+  MaxFall: -10,
+  PlayerStart: {x: 10, y: 20, z: 10},
+  PlayerFallReset: -80,
+  TerrainHeight: 50,
+  Gravity: -9,
+  GroundScale: [1000,1000],
+  ScaleSegRatio: 1, // number of segments per ground scale (if it's .6, 1000 scale will have 600 segments)
+  HeightMapFile: './src/heightSimplex1920.png'
+};
+
+const PlayerParams = {
+  FootHeightThreshold: -0.58, // negative, the closer to zero the more you can wall walk
+  MaxWalk: 2.5,
+  MaxRun: 4.5,
+  JumpPower: 20,
+  Friction: .4,
+  RollingFriction: .1,
+  CapsuleRadius: .3,
+  Mass: 1,
+};
+
 class OrbitTests {
 
   constructor() {
-    new THREE.ImageBitmapLoader().load('./src/height128.png', (texture) => {
+    // this didn't need to go here...
+    new THREE.ImageBitmapLoader().load(WorldParams.HeightMapFile, (texture) => {
       this._Initialize({ groundHeightMapTexture: texture });
     });
   }
@@ -79,25 +102,17 @@ class OrbitTests {
     ]);
     this._scene.background = this._cubeTexture;
 
-    // create objects
-    const zDeg = 25 * (Math.PI / 180); // 0.5 * Math.PI;
-    const zDeg2 = (180 - 25) * (Math.PI / 180);
-
     const flatArray = new Array(100 * 100);
-    const widthSegments = 512;
-    const heightSegments = 512;
+    const widthSegments = Math.ceil(WorldParams.GroundScale[0] * WorldParams.ScaleSegRatio);
+    const heightSegments = Math.ceil(WorldParams.GroundScale[1] * WorldParams.ScaleSegRatio);
     const groundHeightMapTexture = textures.groundHeightMapTexture;
     this.loadTexture(groundHeightMapTexture, widthSegments, heightSegments, flatArray);
 
-    const terrainHeight = 50;
-    this._groundPlane = this.createPlane("ground", 0xDD55FF, [1000, 1000], [0, 0, 0], [0, 0, 0], true, widthSegments, heightSegments, terrainHeight, flatArray);
+    const terrainHeight = WorldParams.TerrainHeight;
+    this._groundPlane = this.createPlane("ground", 0xDD55FF, WorldParams.GroundScale, [0, 0, 0], [0, 0, 0], widthSegments, heightSegments, terrainHeight, flatArray);
 
-    //this.createPlane("wall", 0x00FFFF, [10,10], [14.5,2.125,0], [0,0,zDeg], false, 64, 64, 0, null);
-    //this.createPlane("wall1", 0xFFFF00, [10,10], [-14.5,-2.125,0], [0,0,zDeg], false, 64, 64, 0, null);
-
-    this._playerStartHeight = 20;
-    this._playerResetHeight = -80;
-    this._player = this.createCone(0xFF0000, new THREE.Vector3(0, this._playerStartHeight, 0), true);
+    this._playerResetHeight = WorldParams.PlayerFallReset;
+    this._player = this.createPlayer(new THREE.Vector3(WorldParams.PlayerStart.x, WorldParams.PlayerStart.y, WorldParams.PlayerStart.z));
     this._playerState = PSTATE.IDLE;
 
     // controls
@@ -109,10 +124,10 @@ class OrbitTests {
 
 
     // set initial position and rotation of our objects and lights
-    this._camera.position.z = -3;
-    this._camera.position.y = this._player.obj3d.position.y + 2;
-    this._camera.position.x = -0;
-    this._camera.lookAt(this._player.obj3d.position);
+    this._camera.position.z = WorldParams.PlayerStart.z - 3;
+    this._camera.position.y = WorldParams.PlayerStart.y + 2;
+    this._camera.position.x = WorldParams.PlayerStart.x - 0;
+    this._camera.lookAt(WorldParams.PlayerStart);
 
     light.position.set(10, 0, 25);
 
@@ -187,7 +202,7 @@ class OrbitTests {
     // here we apply ONLY a force vector. then in the tick we have to clamp linear velocity manually
     const totalScalingFactor = 2;
     const xzScalingFactor = 2.5;
-    const yScalingFactor = 40;
+    const yScalingFactor = PlayerParams.JumpPower;
 
     const calcImpulse = {
       x: moveDelta.y === 0 ? (moveDelta.x * xzScalingFactor) : 0,
@@ -320,52 +335,37 @@ class OrbitTests {
     return false;
   }
 
-  createCone = (color, position, isPlayer) => {
+  createPlayer = (position) => {
 
-    const radius = .1;
-    const mass = 2;
+    const mass = PlayerParams.Mass;
 
     // Create the three js object
     const obj3d = new THREE.Object3D();
     const material = new THREE.MeshPhongMaterial({
       transparent: false,
       opacity: 1,
-
-
-      color: color,
-      emissive: color * .5,
-      specular: color * .5,
+      color: 0xFF0000,
+      emissive: 0xFF0000 * .5,
+      specular: 0xFF0000 * .5,
       shininess: 67,
       flatShading: true,
-
       envMap: this._cubeTexture,
-      reflectivity: .4,
-
-      side: THREE.DoubleSide
+      reflectivity: .4
     });
 
     const capsuleHeight = .75;
 
-    let foot = null;
-    const createCone = false;
-    if (createCone) {
-      const geometry = new THREE.ConeGeometry(radius, .5, 32);
-      const cone = new THREE.Mesh(geometry, material);
-      cone.position.y += 0.125;
-      cone.rotation.x += Math.PI / 2;
-      obj3d.add(cone);
-    } else {
-      // create our "capsule"
-      const geometry = new THREE.CylinderGeometry(radius * 3, radius * 3, capsuleHeight);
-      const cylinder = new THREE.Mesh(geometry, material);
-      cylinder.position.y -= .125;
-      obj3d.add(cylinder);
+    // create our "capsule"
+    const geometry = new THREE.CylinderGeometry(PlayerParams.CapsuleRadius, PlayerParams.CapsuleRadius, capsuleHeight);
+    const cylinder = new THREE.Mesh(geometry, material);
+    cylinder.position.y -= .125;
+    obj3d.add(cylinder);
 
-      const cylinderBottomGeo = new THREE.SphereGeometry(radius * 3, 10, 10);
-      const cylinderBottom = new THREE.Mesh(cylinderBottomGeo, material);
-      cylinderBottom.position.y -= .4125;
-      obj3d.add(cylinderBottom);
-    }
+    const cylinderBottomGeo = new THREE.SphereGeometry(PlayerParams.CapsuleRadius, 10, 10);
+    const cylinderBottom = new THREE.Mesh(cylinderBottomGeo, material);
+    cylinderBottom.position.y -= .4125;
+    obj3d.add(cylinderBottom);
+
     this._scene.add(obj3d);
     obj3d.position.copy(position);
 
@@ -377,29 +377,26 @@ class OrbitTests {
     const motionState = new Ammo.btDefaultMotionState(transform);
     let colShape = null;
 
-    if (createCone) {
-      colShape = new Ammo.btSphereShape(radius * 2);
-    } else {
-      colShape = new Ammo.btCapsuleShape(radius * 3, capsuleHeight);
-    }
+    colShape = new Ammo.btCapsuleShape(PlayerParams.CapsuleRadius, capsuleHeight);
+
     colShape.setMargin(0.05);
     let localInertia = new Ammo.btVector3(0, 0, 0);
     colShape.calculateLocalInertia(mass, localInertia);
     let rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
     let body = new Ammo.btRigidBody(rbInfo);
-    body.setFriction(.4); //.4
-    body.setRollingFriction(.10); // .1
+    body.setFriction(PlayerParams.Friction); //.4
+    body.setRollingFriction(PlayerParams.RollingFriction); // .1
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
     body.setAngularFactor(0, 0, 0);
     this._physicsWorld.addRigidBody(body);
 
-    const maxWalk = 2.5;
-    const maxRun = 4.5;
+    const maxWalk = PlayerParams.MaxWalk;
+    const maxRun = PlayerParams.MaxRun;
 
     const retVal = {
       obj3d: obj3d,
       physicsBody: body,
-      isPlayer: isPlayer,
+      isPlayer: true,
       maxWalk: maxWalk,
       maxRun: maxRun
     };
@@ -408,42 +405,28 @@ class OrbitTests {
     return retVal;
   }
 
-  createPlane = (name, color, scale, position, rotation, genHeightMap, widthSegments, heightSegments, terrainMaxHeight, heightMapArr) => {
+  createPlane = (name, color, scale, position, rotation, widthSegments, heightSegments, terrainMaxHeight, heightMapArr) => {
 
-    //let xScale, yScale, zScale, xPos, yPos, zPos, xRot, yRot, zRot;
     const mass = 0;
-    //let scale = { x: 100, y: .2, z: 100 };
 
     const [xScale, yScale, zScale] = [scale[0], .2, scale[1]];
     const [xPos, yPos, zPos] = position;
     const [xRot, yRot, zRot] = rotation;
-    //const scale = { x: xScale, y: .2, z: zScale };
 
     const obj3d = new THREE.Object3D();
     const segmentMult = 4;
-    const xSegments = widthSegments;//xScale*segmentMult;
-    const zSegments = heightSegments;//zScale*segmentMult;
-    const geometry = new THREE.PlaneGeometry(xScale, zScale, xSegments - 1, zSegments - 1/*xScale*3, zScale*3*/);
+    const xSegments = widthSegments;
+    const zSegments = heightSegments;
+    const geometry = new THREE.PlaneGeometry(xScale, zScale, xSegments - 1, zSegments - 1);
     geometry.rotateX(- Math.PI / 2);
 
     const hmap = new HeightMapGenerator();
     let hmapData = [];
     const terrainMinHeight = 0; // has to be zero right now or my physics will derp i think...
-    //const terrainMaxHeight = 8;
-    if (genHeightMap) {
-      //hmapData = hmap.generateSampleWavyHeightData(xSegments, zSegments, terrainMinHeight, terrainMaxHeight);
-      hmapData = hmap.generateTextureHeightData(widthSegments, heightSegments, terrainMinHeight, terrainMaxHeight, heightMapArr);
-    } else {
-      hmapData = hmap.generateFlatHeightData(xSegments, zSegments);
-    }
-    hmap.applyHeightToPlane(geometry, hmapData);
 
-    // const group = new THREE.Group();
-    // const lineMaterial = new THREE.LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 0.5 } );
-    // const meshMaterial = new THREE.MeshPhongMaterial( { color: 0x156289, emissive: 0x072534, side: DoubleSide, flatShading: true } );
-    // group.add( new THREE.LineSegments( geometry, lineMaterial ) );
-    // group.add( new THREE.Mesh( geometry, meshMaterial ) );
-    //const mesh = group;
+    hmapData = hmap.generateTextureHeightData(widthSegments, heightSegments, terrainMinHeight, terrainMaxHeight, heightMapArr);
+
+    hmap.applyHeightToPlane(geometry, hmapData);
 
     const doWireframe = true;
     const doMesh = true;
@@ -480,7 +463,7 @@ class OrbitTests {
     const xAxis = new THREE.Vector3(1, 0, 0);
     const yAxis = new THREE.Vector3(0, 1, 0);
     const zAxis = new THREE.Vector3(0, 0, 1);
-    //line.rotateOnAxis(xAxis, 0.5 * Math.PI);
+
     mesh.position.z = yScale / 2;
     obj3d.add(mesh);
 
@@ -500,12 +483,10 @@ class OrbitTests {
     const transform = new Ammo.btTransform();
     transform.setIdentity();
     console.log(`Setting ${name} phys origin to ${xPos},${yPos},${zPos}`);
-    //transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
     transform.setRotation(new Ammo.btQuaternion(obj3dQuat.x, obj3dQuat.y, obj3dQuat.z, obj3dQuat.w));
     transform.setOrigin(new Ammo.btVector3(xPos, yPos, zPos));
     const motionState = new Ammo.btDefaultMotionState(transform);
 
-    //let colShape = genHeightMap ? hmap.createTerrainShape(hmapData, xSegments, zSegments, terrainMinHeight, terrainMaxHeight, xScale, zScale) : new Ammo.btBoxShape(new Ammo.btVector3(xScale/2, yScale, zScale/2));
     let colShape = hmap.createTerrainShape(hmapData, xSegments, zSegments, terrainMinHeight, terrainMaxHeight, xScale, zScale);
     colShape.setMargin(0.05);
 
@@ -529,7 +510,7 @@ class OrbitTests {
   resetCone = () => {
     const transform = new Ammo.btTransform();
     transform.setIdentity();
-    transform.setOrigin(new Ammo.btVector3(0, this._playerStartHeight, 0));
+    transform.setOrigin(new Ammo.btVector3(WorldParams.PlayerStart.x, WorldParams.PlayerStart.y, WorldParams.PlayerStart.z));
     transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
     const motionState = new Ammo.btDefaultMotionState(transform);
     this._player.physicsBody.setMotionState(motionState);
@@ -542,30 +523,41 @@ class OrbitTests {
       solver = new Ammo.btSequentialImpulseConstraintSolver();
 
     this._physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
-    this._physicsWorld.setGravity(new Ammo.btVector3(0, -9, 0));
+    this._physicsWorld.setGravity(new Ammo.btVector3(0, WorldParams.Gravity, 0));
     console.log(`physicsWOrld`, this._physicsWorld);
 
   }
 
   getPhysObjCoords = (objAmmo) => {
-    if (false && objAmmo.getMotionState) {
-      const myMotionState = objAmmo.getMotionState();
-      myMotionState.getWorldTransform(this._tmpTrans);
-      const ammoPosInWorldCoords = this._tmpTrans.getOrigin();
-      const x = ammoPosInWorldCoords.x();
-      const y = ammoPosInWorldCoords.y();
-      const z = ammoPosInWorldCoords.z();
-      return { x: x, y: y, z: z };
-    } else {
-      const transf = objAmmo.getWorldTransform();
-      const ammoPosInWorldCoords = transf.getOrigin();
-      const x = ammoPosInWorldCoords.x();
-      const y = ammoPosInWorldCoords.y();
-      const z = ammoPosInWorldCoords.z();
-      const ret = { x: x, y: y, z: z };
-      //console.log(`coords`, ret);
-      return ret;
+    const transf = objAmmo.getWorldTransform();
+    const ammoPosInWorldCoords = transf.getOrigin();
+    const x = ammoPosInWorldCoords.x();
+    const y = ammoPosInWorldCoords.y();
+    const z = ammoPosInWorldCoords.z();
+    const ret = { x: x, y: y, z: z };
+    return ret;
+  }
+
+  limitSpeed = (ammoObj, maxXZ, maxY) => {
+    const linVel = ammoObj.getLinearVelocity();
+    const linXYZ = { x: linVel.x(), y: linVel.y(), z: linVel.z() };
+    const speed = Math.abs(Math.sqrt(linXYZ.x * linXYZ.x + linXYZ.z * linXYZ.z));
+
+    let newX = linXYZ.x;
+    let newY = linXYZ.y;
+    let newZ = linXYZ.z;
+
+    if (linXYZ.y < maxY) {
+      newY = maxY;
     }
+
+    const speeding = speed > maxXZ;
+    if (speeding) {
+      const ratio = maxXZ / speed;
+      newX = linXYZ.x * ratio;
+      newZ = linXYZ.z * ratio;
+    }
+    ammoObj.setLinearVelocity(new Ammo.btVector3(newX, newY, newZ));
   }
 
   updatePhysics = (deltaTime) => {
@@ -575,33 +567,10 @@ class OrbitTests {
     }
 
 
-    // OKAY.
-    // Before we can stepSimulation, we will need to look at the player object's linear velocity
-    // and calculate the speed on the X, Z plane. If it is greater than _player.maxWalk or something,
-    // then we need to do whatever math is needed to scale down the x and z values so that we only go
-    // at max speed.
-    // const vel = body.getLinearVelocity();
-    const linVel = this._player.physicsBody.getLinearVelocity();
-    const linXYZ = { x: linVel.x(), y: linVel.y(), z: linVel.z() };
-    const speed = Math.abs(Math.sqrt(linXYZ.x * linXYZ.x + linXYZ.z * linXYZ.z));
+    // Speed Limit
     const maxSpeed = (this._playerState == PSTATE.WALKBACKWARD || this._playerState == PSTATE.WALKFORWARD) ? this._player.maxWalk : this._player.maxRun;
-
-    const maxFall = -7;
-    let newX = linXYZ.x;
-    let newY = linXYZ.y;
-    let newZ = linXYZ.z;
-
-    if (linXYZ.y < maxFall) {
-      newY = maxFall;
-    }
-
-    const speeding = speed > maxSpeed;
-    if (speeding) {
-      const ratio = maxSpeed / speed;
-      newX = linXYZ.x * ratio;
-      newZ = linXYZ.z * ratio;
-    }
-    this._player.physicsBody.setLinearVelocity(new Ammo.btVector3(newX, newY, newZ));
+    const maxFall = WorldParams.MaxFall;
+    this.limitSpeed(this._player.physicsBody, maxSpeed, maxFall);
 
 
     // Step world
@@ -666,10 +635,11 @@ class OrbitTests {
       // okay so distance might not matter that much. i'll keep it in...
       if (distance > 0.01) return;
 
-      const footContactDetected = xyz.y < -0.58;
+      const footContactDetected = xyz.y < PlayerParams.FootHeightThreshold;
       if (!footContactDetected) {
         console.log(`Player is touching the 'ground' but not with their feet. You can't move.`, xyz);
       }
+      if (!footContactDetected) return; // need to return in case we are touching the ground and a wall
 
       this.hasContact = footContactDetected;
     }
