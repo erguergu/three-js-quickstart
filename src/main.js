@@ -37,7 +37,7 @@ class OrbitTests {
 
     this.setupPhysicsWorld();
     this._cbContactPairResult = null; // for collision detection
-    this.setupContactPairResultCallback();
+    this.setupFeetOnGroundResultCallback();
 
     // camera aspect ratio starts out matching viewport aspect ratio
     this._camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
@@ -189,7 +189,7 @@ class OrbitTests {
     const xzScalingFactor = 2.5;
     const yScalingFactor = 40;
 
-    const calcImpulse = { 
+    const calcImpulse = {
       x: moveDelta.y === 0 ? (moveDelta.x * xzScalingFactor) : 0,
       y: moveDelta.y * yScalingFactor,
       z: moveDelta.y === 0 ? (moveDelta.z * xzScalingFactor) : 0
@@ -218,17 +218,17 @@ class OrbitTests {
     //    Oh I just realized mass only affects if the object will move. I think I need to do 
     //    something more if I want the object to serve only as a trigger and not impact other
     //    rigid bodies...
-    
+
     return this._betterDetectCollision();
 
   }
 
   _betterDetectCollision() {
     this._cbContactPairResult.hasContact = false;
-    this._physicsWorld.contactPairTest(this._player.ammoFoot, this._groundPlane.physicsBody, this._cbContactPairResult);
+    this._physicsWorld.contactPairTest(this._player.physicsBody, this._groundPlane.physicsBody, this._cbContactPairResult);
     const feetOnGround = this._cbContactPairResult.hasContact;
-    const feetLocation = this.getPhysObjCoords(this._player.ammoFoot);
-    console.log(`we ${feetOnGround ? 'are' : 'are not'} touching the ground... right?`, feetLocation);
+    const feetLocation = this.getPhysObjCoords(this._player.physicsBody);
+    //console.log(`we ${feetOnGround ? 'are' : 'are not'} touching the ground... right?`, feetLocation);
     return feetOnGround;
   }
 
@@ -237,22 +237,22 @@ class OrbitTests {
     const dispatcher = this._physicsWorld.getDispatcher();
     const numManifolds = dispatcher.getNumManifolds();
     let totalContacts = 0;
-  
-    for ( let i = 0; i < numManifolds; i ++ ) {
-  
-      const contactManifold = dispatcher.getManifoldByIndexInternal( i );
+
+    for (let i = 0; i < numManifolds; i++) {
+
+      const contactManifold = dispatcher.getManifoldByIndexInternal(i);
       const numContacts = contactManifold.getNumContacts();
       totalContacts += numContacts;
-  
-      for ( let j = 0; j < numContacts; j++ ) {
-  
-        let contactPoint = contactManifold.getContactPoint( j );
+
+      for (let j = 0; j < numContacts; j++) {
+
+        let contactPoint = contactManifold.getContactPoint(j);
         let distance = contactPoint.getDistance();
-  
+
         //console.log({manifoldIndex: i, contactIndex: j, distance: distance});
-  
-      }  
-    }  
+
+      }
+    }
     return totalContacts > 0;
   }
 
@@ -261,8 +261,8 @@ class OrbitTests {
       this._playerState = PSTATE.WALKFORWARD;
       const color = 0x00AA00;
       this._player.obj3d.children[0].material.color.setHex(color);
-      this._player.obj3d.children[0].material.emissive.setHex(color*.5);
-      this._player.obj3d.children[0].material.specular.setHex(color*.5);
+      this._player.obj3d.children[0].material.emissive.setHex(color * .5);
+      this._player.obj3d.children[0].material.specular.setHex(color * .5);
     }
   }
 
@@ -271,8 +271,8 @@ class OrbitTests {
       this._playerState = PSTATE.WALKBACKWARD;
       const color = 0x666666;
       this._player.obj3d.children[0].material.color.setHex(color);
-      this._player.obj3d.children[0].material.emissive.setHex(color*.5);
-      this._player.obj3d.children[0].material.specular.setHex(color*.5);
+      this._player.obj3d.children[0].material.emissive.setHex(color * .5);
+      this._player.obj3d.children[0].material.specular.setHex(color * .5);
     }
   }
 
@@ -281,8 +281,8 @@ class OrbitTests {
       this._playerState = PSTATE.RUNFORWARD;
       const color = 0x00FF00;
       this._player.obj3d.children[0].material.color.setHex(color);
-      this._player.obj3d.children[0].material.emissive.setHex(color*.5);
-      this._player.obj3d.children[0].material.specular.setHex(color*.5);
+      this._player.obj3d.children[0].material.emissive.setHex(color * .5);
+      this._player.obj3d.children[0].material.specular.setHex(color * .5);
     }
   }
 
@@ -291,8 +291,8 @@ class OrbitTests {
       this._playerState = PSTATE.RUNBACKWARD;
       const color = 0xDDDDDD;
       this._player.obj3d.children[0].material.color.setHex(color);
-      this._player.obj3d.children[0].material.emissive.setHex(color*.5);
-      this._player.obj3d.children[0].material.specular.setHex(color*.5);
+      this._player.obj3d.children[0].material.emissive.setHex(color * .5);
+      this._player.obj3d.children[0].material.specular.setHex(color * .5);
     }
   }
 
@@ -301,8 +301,8 @@ class OrbitTests {
       this._playerState = PSTATE.IDLE;
       const color = 0xFF0000;
       this._player.obj3d.children[0].material.color.setHex(color);
-      this._player.obj3d.children[0].material.emissive.setHex(color*.5);
-      this._player.obj3d.children[0].material.specular.setHex(color*.5);
+      this._player.obj3d.children[0].material.emissive.setHex(color * .5);
+      this._player.obj3d.children[0].material.specular.setHex(color * .5);
     }
   }
 
@@ -327,14 +327,14 @@ class OrbitTests {
 
     // Create the three js object
     const obj3d = new THREE.Object3D();
-    const material = new THREE.MeshPhongMaterial( { 
+    const material = new THREE.MeshPhongMaterial({
       transparent: false,
       opacity: 1,
 
 
-      color: color, 
-      emissive: color*.5, 
-      specular: color*.5,
+      color: color,
+      emissive: color * .5,
+      specular: color * .5,
       shininess: 67,
       flatShading: true,
 
@@ -342,7 +342,7 @@ class OrbitTests {
       reflectivity: .4,
 
       side: THREE.DoubleSide
-    } );
+    });
 
     const capsuleHeight = .75;
 
@@ -356,21 +356,15 @@ class OrbitTests {
       obj3d.add(cone);
     } else {
       // create our "capsule"
-      const geometry = new THREE.CylinderGeometry( radius*3, radius*3, capsuleHeight);
+      const geometry = new THREE.CylinderGeometry(radius * 3, radius * 3, capsuleHeight);
       const cylinder = new THREE.Mesh(geometry, material);
       cylinder.position.y -= .125;
       obj3d.add(cylinder);
 
-      const cylinderBottomGeo = new THREE.SphereGeometry( radius*3, 10, 10);
+      const cylinderBottomGeo = new THREE.SphereGeometry(radius * 3, 10, 10);
       const cylinderBottom = new THREE.Mesh(cylinderBottomGeo, material);
       cylinderBottom.position.y -= .4125;
       obj3d.add(cylinderBottom);
-
-      // create the "feet"
-      const footGeo = new THREE.SphereGeometry(radius, 10, 10);
-      foot = new THREE.Mesh(footGeo, material);
-      foot.position.y -= .65;
-      obj3d.add(foot);
     }
     this._scene.add(obj3d);
     obj3d.position.copy(position);
@@ -386,7 +380,7 @@ class OrbitTests {
     if (createCone) {
       colShape = new Ammo.btSphereShape(radius * 2);
     } else {
-      colShape = new Ammo.btCapsuleShape(radius*3, capsuleHeight);
+      colShape = new Ammo.btCapsuleShape(radius * 3, capsuleHeight);
     }
     colShape.setMargin(0.05);
     let localInertia = new Ammo.btVector3(0, 0, 0);
@@ -395,42 +389,20 @@ class OrbitTests {
     let body = new Ammo.btRigidBody(rbInfo);
     body.setFriction(.4); //.4
     body.setRollingFriction(.10); // .1
-    //body.setDamping(.2, 0);
     body.setActivationState(ASTATE.DISABLE_DEACTIVATION);
     body.setAngularFactor(0, 0, 0);
-    //body.setLinearFactor( 0, 0, 0 );
     this._physicsWorld.addRigidBody(body);
-
-    // add foot physics
-    // const footTrans = new Ammo.btTransform();
-    // footTrans.setIdentity();
-    // footTrans.setOrigin(foot.position.x, foot.position.y, foot.position.z);
-    // footTrans.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
-    // const footMotionState = new Ammo.btDefaultMotionState(footTrans);
-    // const footShape = new Ammo.btSphereShape(radius);
-    // footShape.setMargin(.05);
-    // footShape.calculateLocalInertia(mass, localInertia);
-    // let footRbInfo = new Ammo.btRigidBodyConstructionInfo(mass, footMotionState, footShape, localInertia);
-    // let footBody = new Ammo.btRigidBody(footRbInfo);
-    // footBody.setFriction(0);
-    // footBody.setRollingFriction(0);
-    // footBody.setActivationState(ASTATE.DISABLE_DEACTIVATION);
-    // footBody.setAngularFactor(0,0,0);
-    // footBody.setCollisionFlags(1); // static
-    
-    const footShape = new Ammo.btSphereShape(radius);
-    const footBody = new Ammo.btGhostObject();
-    footBody.setCollisionShape(footShape);
-
-    this._physicsWorld.addCollisionObject(footBody);
-
-
-    console.log(`foot is static:`, footBody.isStaticObject());
 
     const maxWalk = 2.5;
     const maxRun = 4.5;
 
-    const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: isPlayer, maxWalk: maxWalk, maxRun: maxRun, threeFoot: foot, ammoFoot: footBody };
+    const retVal = {
+      obj3d: obj3d,
+      physicsBody: body,
+      isPlayer: isPlayer,
+      maxWalk: maxWalk,
+      maxRun: maxRun
+    };
     this._rigidBodies.push(retVal);
 
     return retVal;
@@ -483,13 +455,13 @@ class OrbitTests {
       mesh.add(new THREE.LineSegments(wireframe, lineMat));
     }
     if (doMesh) {
-      const meshMaterial = new THREE.MeshPhongMaterial( { 
+      const meshMaterial = new THREE.MeshPhongMaterial({
         transparent: true,
         opacity: .9,
 
 
-        color: 0x7f00ff, 
-        emissive: 0xff, 
+        color: 0x7f00ff,
+        emissive: 0xff,
         specular: 0x191900,
         shininess: 67,
         flatShading: true,
@@ -498,8 +470,8 @@ class OrbitTests {
         reflectivity: .6,
 
         side: THREE.DoubleSide
-      } );
-      mesh.add( new THREE.Mesh( geometry, meshMaterial ) );
+      });
+      mesh.add(new THREE.Mesh(geometry, meshMaterial));
     }
 
     mesh.position.y = 0 - ((terrainMaxHeight - terrainMinHeight) / 2);
@@ -563,22 +535,7 @@ class OrbitTests {
     this._player.physicsBody.setMotionState(motionState);
   }
 
-  syncAmmoFootToThreeFoot = (ammoFoot, threeFoot) => {
-    const transform = new Ammo.btTransform();
-    transform.setIdentity();
-    const worldFoot = new THREE.Vector3();
-    threeFoot.getWorldPosition(worldFoot);
-    const x = worldFoot.x;
-    const y = worldFoot.y;
-    const z = worldFoot.z;
-    transform.setOrigin(new Ammo.btVector3(x, y, z));
-    transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
-    ammoFoot.setWorldTransform(transform);
-    console.log(`I should have set ammoFoot's xyz to ${x},${y},${z}`, ammoFoot);
-  }
-
   setupPhysicsWorld = () => {
-
     const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration(),
       dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration),
       overlappingPairCache = new Ammo.btDbvtBroadphase(),
@@ -591,14 +548,24 @@ class OrbitTests {
   }
 
   getPhysObjCoords = (objAmmo) => {
-    const myMotionState = objAmmo.getMotionState();
-    myMotionState.getWorldTransform(this._tmpTrans);
-    const ammoPosInWorldCoords = this._tmpTrans.getOrigin();
-    const x = ammoPosInWorldCoords.x();
-    const y = ammoPosInWorldCoords.y();
-    const z = ammoPosInWorldCoords.z();
-
-    return {x: x, y: y, z: z};
+    if (false && objAmmo.getMotionState) {
+      const myMotionState = objAmmo.getMotionState();
+      myMotionState.getWorldTransform(this._tmpTrans);
+      const ammoPosInWorldCoords = this._tmpTrans.getOrigin();
+      const x = ammoPosInWorldCoords.x();
+      const y = ammoPosInWorldCoords.y();
+      const z = ammoPosInWorldCoords.z();
+      return { x: x, y: y, z: z };
+    } else {
+      const transf = objAmmo.getWorldTransform();
+      const ammoPosInWorldCoords = transf.getOrigin();
+      const x = ammoPosInWorldCoords.x();
+      const y = ammoPosInWorldCoords.y();
+      const z = ammoPosInWorldCoords.z();
+      const ret = { x: x, y: y, z: z };
+      //console.log(`coords`, ret);
+      return ret;
+    }
   }
 
   updatePhysics = (deltaTime) => {
@@ -651,8 +618,6 @@ class OrbitTests {
 
       // get the three js object
       const obj3d = obj.obj3d;
-      const threeFoot = obj.threeFoot;
-      const ammoFoot = obj.ammoFoot;
 
       // figure out location/rotation of the given physics object
       const myMotionState = objAmmo.getMotionState();
@@ -673,9 +638,6 @@ class OrbitTests {
 
         if (obj.isPlayer) {
 
-          // NOW, set the static "foot" object to match the threejs foot counterpart
-          this.syncAmmoFootToThreeFoot(ammoFoot, threeFoot);
-
           if (y < this._playerResetHeight) {
             this.resetCone();
           }
@@ -689,74 +651,80 @@ class OrbitTests {
 
   }
 
-  setupContactPairResultCallback = () => {
+  setupFeetOnGroundResultCallback = () => {
 
     this._cbContactPairResult = new Ammo.ConcreteContactResultCallback();
-  
     this._cbContactPairResult.hasContact = false;
-  
-    this._cbContactPairResult.addSingleResult = function(cp, colObj0Wrap, partId0, index0, colObj1Wrap, partId1, index1){
-  
-      let contactPoint = Ammo.wrapPointer( cp, Ammo.btManifoldPoint );
-  
+
+    this._cbContactPairResult.addSingleResult = function (cp, colObj0Wrap, partId0, index0, colObj1Wrap, partId1, index1) {
+
+      let contactPoint = Ammo.wrapPointer(cp, Ammo.btManifoldPoint);
       const distance = contactPoint.getDistance();
-  
-      if( distance > 0 ) return;
-  
-      this.hasContact = true;
-  
+      const mlocal = contactPoint.get_m_localPointA();
+      const xyz = {x: mlocal.x(), y: mlocal.y(), z: mlocal.z()};
+
+      // okay so distance might not matter that much. i'll keep it in...
+      if (distance > 0.01) return;
+
+      const footContactDetected = xyz.y < -0.58;
+      if (!footContactDetected) {
+        console.log(`Player is touching the 'ground' but not with their feet. You can't move.`, xyz);
+      }
+
+      this.hasContact = footContactDetected;
     }
-  
   }
-  
+
   setupContactResultCallback = () => {
 
     cbContactResult = new Ammo.ConcreteContactResultCallback();
-  
-    cbContactResult.addSingleResult = function(cp, colObj0Wrap, partId0, index0, colObj1Wrap, partId1, index1){
-  
-      let contactPoint = Ammo.wrapPointer( cp, Ammo.btManifoldPoint );
-  
+
+    cbContactResult.addSingleResult = function (cp, colObj0Wrap, partId0, index0, colObj1Wrap, partId1, index1) {
+
+      let contactPoint = Ammo.wrapPointer(cp, Ammo.btManifoldPoint);
+
       const distance = contactPoint.getDistance();
-  
-      if( distance > 0 ) return;
-  
-      let colWrapper0 = Ammo.wrapPointer( colObj0Wrap, Ammo.btCollisionObjectWrapper );
-      let rb0 = Ammo.castObject( colWrapper0.getCollisionObject(), Ammo.btRigidBody );
-  
-      let colWrapper1 = Ammo.wrapPointer( colObj1Wrap, Ammo.btCollisionObjectWrapper );
-      let rb1 = Ammo.castObject( colWrapper1.getCollisionObject(), Ammo.btRigidBody );
-  
+
+      if (distance > 0) return;
+
+      let colWrapper0 = Ammo.wrapPointer(colObj0Wrap, Ammo.btCollisionObjectWrapper);
+      let rb0 = Ammo.castObject(colWrapper0.getCollisionObject(), Ammo.btRigidBody);
+
+      let colWrapper1 = Ammo.wrapPointer(colObj1Wrap, Ammo.btCollisionObjectWrapper);
+      let rb1 = Ammo.castObject(colWrapper1.getCollisionObject(), Ammo.btRigidBody);
+
       let threeObject0 = rb0.threeObject;
       let threeObject1 = rb1.threeObject;
-  
+
       let tag, localPos, worldPos
-  
-      if( threeObject0.userData.tag != "ball" ){
-  
+
+      if (threeObject0.userData.tag != "ball") {
+
         tag = threeObject0.userData.tag;
         localPos = contactPoint.get_m_localPointA();
         worldPos = contactPoint.get_m_positionWorldOnA();
-  
+
       }
-      else{
-  
+      else {
+
         tag = threeObject1.userData.tag;
         localPos = contactPoint.get_m_localPointB();
         worldPos = contactPoint.get_m_positionWorldOnB();
-  
+
       }
-  
-      let localPosDisplay = {x: localPos.x(), y: localPos.y(), z: localPos.z()};
-      let worldPosDisplay = {x: worldPos.x(), y: worldPos.y(), z: worldPos.z()};
-  
-      console.log( { tag, localPosDisplay, worldPosDisplay } );
-  
+
+      let localPosDisplay = { x: localPos.x(), y: localPos.y(), z: localPos.z() };
+      let worldPosDisplay = { x: worldPos.x(), y: worldPos.y(), z: worldPos.z() };
+
+      console.log({ tag, localPosDisplay, worldPosDisplay });
+
     }
-  
+
   }
 
 }
+
+
 
 let _APP = null;
 
