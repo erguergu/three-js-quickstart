@@ -4,6 +4,7 @@ import { MMOrbitControls } from './MMOrbitControls.js';
 import { HeightMapGenerator } from './HeightMap.js';
 import { ArrayResizer } from './ArrayResizer.js';
 import * as THREE from './three.module.js';
+import { FBXLoader } from './FBXLoader.js';
 
 // Player states
 const PSTATE = { IDLE: "Idle", WALKFORWARD: "WalkForward", RUNFORWARD: "RunForward", WALKBACKWARD: 'WalkBackward', RUNBACKWARD: 'RunBackward', JUMP: 'Jump' };
@@ -13,13 +14,13 @@ const ASTATE = { DISABLE_DEACTIVATION: 4 }
 
 const WorldParams = {
   MaxFall: -10,
-  PlayerStart: {x: 10, y: 20, z: 10},
+  PlayerStart: { x: 10, y: 20, z: 10 },
   PlayerFallReset: -80,
-  TerrainHeight: 50,
+  TerrainHeight: 15, //50
   Gravity: -9,
-  GroundScale: [1000,1000],
+  GroundScale: [50, 50],
   ScaleSegRatio: 1, // number of segments per ground scale (if it's .6, 1000 scale will have 600 segments)
-  HeightMapFile: './src/heightSimplex1920.png'
+  HeightMapFile: './src/height128.png'
 };
 
 const PlayerParams = {
@@ -31,6 +32,9 @@ const PlayerParams = {
   RollingFriction: .1,
   CapsuleRadius: .3,
   Mass: 1,
+  ModelScale: .006,
+  ModelYShift: -.71,
+  ModelFiles: { SkinMesh: './src/ybot.fbx', Idle: './src/Idle.fbx', Walk: './src/Walking.fbx' }
 };
 
 class OrbitTests {
@@ -38,11 +42,18 @@ class OrbitTests {
   constructor() {
     // this didn't need to go here...
     new THREE.ImageBitmapLoader().load(WorldParams.HeightMapFile, (texture) => {
-      this._Initialize({ groundHeightMapTexture: texture });
+      const loader = new FBXLoader();
+      loader.load(PlayerParams.ModelFiles.SkinMesh, (object) => {
+        loader.load(PlayerParams.ModelFiles.Idle, (idleObject) => {
+          loader.load(PlayerParams.ModelFiles.Walk, (walkObject) => {
+            this._Initialize({ groundHeightMapTexture: texture }, object, idleObject, walkObject);
+          });
+        });
+      });
     });
   }
 
-  _Initialize(textures) {
+  _Initialize(textures, ybotFbx, idleFbx, walkFbx) {
 
     // need a scene
     this._scene = new THREE.Scene();
@@ -112,7 +123,8 @@ class OrbitTests {
     this._groundPlane = this.createPlane("ground", 0xDD55FF, WorldParams.GroundScale, [0, 0, 0], [0, 0, 0], widthSegments, heightSegments, terrainHeight, flatArray);
 
     this._playerResetHeight = WorldParams.PlayerFallReset;
-    this._player = this.createPlayer(new THREE.Vector3(WorldParams.PlayerStart.x, WorldParams.PlayerStart.y, WorldParams.PlayerStart.z));
+    const playerModelObjects = {playerModel: ybotFbx, playerIdle: idleFbx, playerWalk: walkFbx};
+    this._player = this.createPlayer(playerModelObjects, new THREE.Vector3(WorldParams.PlayerStart.x, WorldParams.PlayerStart.y, WorldParams.PlayerStart.z));
     this._playerState = PSTATE.IDLE;
 
     // controls
@@ -141,6 +153,7 @@ class OrbitTests {
     var render = () => {
       let deltaTime = this._clock.getDelta();
       requestAnimationFrame(render);
+      this._player.animation.mixer.update(deltaTime);
       controls.update(deltaTime);
       this.updatePhysics(deltaTime);
       renderer.render(this._scene, this._camera);
@@ -275,9 +288,11 @@ class OrbitTests {
     if (this._playerState != PSTATE.WALKFORWARD) {
       this._playerState = PSTATE.WALKFORWARD;
       const color = 0x00AA00;
-      this._player.obj3d.children[0].material.color.setHex(color);
-      this._player.obj3d.children[0].material.emissive.setHex(color * .5);
-      this._player.obj3d.children[0].material.specular.setHex(color * .5);
+      console.log(`walk`, this._player.animation.walk);
+      this._player.animation.walk.fadeIn();
+      // this._player.obj3d.children[0].material.color.setHex(color);
+      // this._player.obj3d.children[0].material.emissive.setHex(color * .5);
+      // this._player.obj3d.children[0].material.specular.setHex(color * .5);
     }
   }
 
@@ -285,9 +300,9 @@ class OrbitTests {
     if (this._playerState != PSTATE.WALKBACKWARD) {
       this._playerState = PSTATE.WALKBACKWARD;
       const color = 0x666666;
-      this._player.obj3d.children[0].material.color.setHex(color);
-      this._player.obj3d.children[0].material.emissive.setHex(color * .5);
-      this._player.obj3d.children[0].material.specular.setHex(color * .5);
+      // this._player.obj3d.children[0].material.color.setHex(color);
+      // this._player.obj3d.children[0].material.emissive.setHex(color * .5);
+      // this._player.obj3d.children[0].material.specular.setHex(color * .5);
     }
   }
 
@@ -295,9 +310,9 @@ class OrbitTests {
     if (this._playerState != PSTATE.RUNFORWARD) {
       this._playerState = PSTATE.RUNFORWARD;
       const color = 0x00FF00;
-      this._player.obj3d.children[0].material.color.setHex(color);
-      this._player.obj3d.children[0].material.emissive.setHex(color * .5);
-      this._player.obj3d.children[0].material.specular.setHex(color * .5);
+      // this._player.obj3d.children[0].material.color.setHex(color);
+      // this._player.obj3d.children[0].material.emissive.setHex(color * .5);
+      // this._player.obj3d.children[0].material.specular.setHex(color * .5);
     }
   }
 
@@ -305,9 +320,9 @@ class OrbitTests {
     if (this._playerState != PSTATE.RUNBACKWARD) {
       this._playerState = PSTATE.RUNBACKWARD;
       const color = 0xDDDDDD;
-      this._player.obj3d.children[0].material.color.setHex(color);
-      this._player.obj3d.children[0].material.emissive.setHex(color * .5);
-      this._player.obj3d.children[0].material.specular.setHex(color * .5);
+      // this._player.obj3d.children[0].material.color.setHex(color);
+      // this._player.obj3d.children[0].material.emissive.setHex(color * .5);
+      // this._player.obj3d.children[0].material.specular.setHex(color * .5);
     }
   }
 
@@ -315,9 +330,11 @@ class OrbitTests {
     if (this._playerState != PSTATE.IDLE) {
       this._playerState = PSTATE.IDLE;
       const color = 0xFF0000;
-      this._player.obj3d.children[0].material.color.setHex(color);
-      this._player.obj3d.children[0].material.emissive.setHex(color * .5);
-      this._player.obj3d.children[0].material.specular.setHex(color * .5);
+      console.log(`idle`, this._player.animation.idle);
+      this._player.animation.idle.fadeIn();
+      //this._player.obj3d.children[0].material.color.setHex(color);
+      //this._player.obj3d.children[0].material.emissive.setHex(color * .5);
+      //this._player.obj3d.children[0].material.specular.setHex(color * .5);
     }
   }
 
@@ -335,12 +352,18 @@ class OrbitTests {
     return false;
   }
 
-  createPlayer = (position) => {
+  createPlayer = (playerModelObjects, position) => {
+
+    const {playerModel: playerModel, playerIdle: playerIdle, playerWalk: playerWalk} = playerModelObjects;
+
+    console.log(`what is player model: `, playerModel);
+    console.log(`what is player idle: `, playerIdle);
+    console.log(`what is player walk: `, playerWalk);
 
     const mass = PlayerParams.Mass;
 
     // Create the three js object
-    const obj3d = new THREE.Object3D();
+    const obj3d = new THREE.Group();
     const material = new THREE.MeshPhongMaterial({
       transparent: false,
       opacity: 1,
@@ -354,17 +377,19 @@ class OrbitTests {
     });
 
     const capsuleHeight = .75;
+    playerModel.position.y += PlayerParams.ModelYShift;
+    playerModel.scale.x = PlayerParams.ModelScale;
+    playerModel.scale.y = PlayerParams.ModelScale;
+    playerModel.scale.z = PlayerParams.ModelScale;
 
-    // create our "capsule"
-    const geometry = new THREE.CylinderGeometry(PlayerParams.CapsuleRadius, PlayerParams.CapsuleRadius, capsuleHeight);
-    const cylinder = new THREE.Mesh(geometry, material);
-    cylinder.position.y -= .125;
-    obj3d.add(cylinder);
+    const mixer = new THREE.AnimationMixer(playerModel);
+    const idleAction = mixer.clipAction(playerIdle.animations[0]);
+    const walkAction = mixer.clipAction(playerWalk.animations[0]);
+    idleAction.play();
 
-    const cylinderBottomGeo = new THREE.SphereGeometry(PlayerParams.CapsuleRadius, 10, 10);
-    const cylinderBottom = new THREE.Mesh(cylinderBottomGeo, material);
-    cylinderBottom.position.y -= .4125;
-    obj3d.add(cylinderBottom);
+    obj3d.add(playerModel);
+    obj3d.add(playerIdle);
+
 
     this._scene.add(obj3d);
     obj3d.position.copy(position);
@@ -398,7 +423,12 @@ class OrbitTests {
       physicsBody: body,
       isPlayer: true,
       maxWalk: maxWalk,
-      maxRun: maxRun
+      maxRun: maxRun,
+      animation: { 
+        mixer: mixer,
+        idle: idleAction,
+        walk: walkAction
+      }
     };
     this._rigidBodies.push(retVal);
 
@@ -630,7 +660,7 @@ class OrbitTests {
       let contactPoint = Ammo.wrapPointer(cp, Ammo.btManifoldPoint);
       const distance = contactPoint.getDistance();
       const mlocal = contactPoint.get_m_localPointA();
-      const xyz = {x: mlocal.x(), y: mlocal.y(), z: mlocal.z()};
+      const xyz = { x: mlocal.x(), y: mlocal.y(), z: mlocal.z() };
 
       // okay so distance might not matter that much. i'll keep it in...
       if (distance > 0.01) return;
