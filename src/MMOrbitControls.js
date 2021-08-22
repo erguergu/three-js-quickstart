@@ -23,7 +23,20 @@ const MMOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, BACK: 3, FORWARD: 4, ROTATEL: 0, 
 const MMTOUCH = { ROTATEL: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATEL: 3 };
 
 class MMOrbitControls extends EventDispatcher {
-	constructor(object, player, movePlayerCallback, walkForwardCallback, walkBackwardCallback, runForwardCallback, runBackwardCallback, stopMovingCallback, jumpCallback, groundCheck, collisionCheck, domElement) {
+	constructor(object, 
+		player, 
+		walkImpulse,
+		runImpulse,
+		movePlayerCallback, 
+		walkForwardCallback, 
+		walkBackwardCallback, 
+		runForwardCallback, 
+		runBackwardCallback, 
+		stopMovingCallback, 
+		jumpCallback, 
+		groundCheck, 
+		collisionCheck, 
+		domElement) {
 		super();
 		if (domElement === undefined) console.warn('THREE.OrbitControls: The second parameter "domElement" is now mandatory.');
 		if (domElement === document) console.error('THREE.OrbitControls: "document" should not be used as the target "domElement". Please use "renderer.domElement" instead.');
@@ -82,8 +95,8 @@ class MMOrbitControls extends EventDispatcher {
 		this.autoRotateSpeed = 2.0; // 30 seconds per orbit when fps is 60
 
 		// Speed of player movement
-		this.walkSpeed = 0.05;
-		this.runSpeed = 0.1;
+		this.walkSpeed = walkImpulse;
+		this.runSpeed = runImpulse;
 
 		this.autoRunOn = false;
 

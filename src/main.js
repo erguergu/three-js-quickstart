@@ -8,23 +8,27 @@ import { FBXLoader } from './FBXLoader.js';
 
 // Player states
 const PSTATE = { IDLE: "Idle", WALKFORWARD: "WalkForward", RUNFORWARD: "RunForward", WALKBACKWARD: 'WalkBackward', RUNBACKWARD: 'RunBackward', JUMP: 'Jump' };
+const JSTATE = { NOJUMP: "NotJumped", JUMP: "Jumped" };
+const GLOBAL = { player: null };
 
 // Ammo JS states
 const ASTATE = { DISABLE_DEACTIVATION: 4 }
 
 const WorldParams = {
   MaxFall: -10,
-  PlayerStart: { x: 7, y: -7, z: 7 },
+  PlayerStart: { x: 7, y: 20, z: 7 },
   PlayerFallReset: -20,
-  TerrainHeight: 15, //50
+  TerrainHeight: 35, //50
   Gravity: -9,
-  GroundScale: [50, 50],
+  GroundScale: [500, 500],
   ScaleSegRatio: 1, // number of segments per ground scale (if it's .6, 1000 scale will have 600 segments)
-  HeightMapFile: './src/height128.png'
+  HeightMapFile: './src/heightSimplex512.png'
 };
 
 const PlayerParams = {
   FootHeightThreshold: -0.58, // negative, the closer to zero the more you can wall walk
+  WalkImpulse: .05,
+  RunImpulse: .1,
   MaxWalk: 1.5,
   MaxRun: 4,
   JumpPower: 20,
@@ -35,11 +39,13 @@ const PlayerParams = {
   Mass: 1,
   ModelScale: .006,
   ModelYShift: -.71,
-  ModelFiles: { 
-    SkinMesh: './src/ybot.fbx', 
-    Idle: './src/Idle.fbx', 
+  ModelFiles: {
+    SkinMesh: './src/ybot.fbx',
+    Idle: './src/Idle.fbx',
     Walk: './src/Walking.fbx',
-    Run: './src/RunForward.fbx'
+    Run: './src/RunForward.fbx',
+    Fall: './src/Fall.fbx',
+    Jump: './src/Jump.fbx'
   }
 };
 
@@ -53,7 +59,19 @@ class OrbitTests {
         loader.load(PlayerParams.ModelFiles.Idle, (idleObject) => {
           loader.load(PlayerParams.ModelFiles.Walk, (walkObject) => {
             loader.load(PlayerParams.ModelFiles.Run, (runObject) => {
-              this._Initialize({ groundHeightMapTexture: texture }, object, idleObject, walkObject, runObject);
+              loader.load(PlayerParams.ModelFiles.Fall, (fallObject) => {
+                loader.load(PlayerParams.ModelFiles.Jump, (jumpObject) => {
+                  this._Initialize(
+                    { groundHeightMapTexture: texture }, 
+                    object, 
+                    idleObject, 
+                    walkObject, 
+                    runObject, 
+                    fallObject, 
+                    jumpObject
+                    );
+                });
+              });
             });
           });
         });
@@ -61,7 +79,7 @@ class OrbitTests {
     });
   }
 
-  _Initialize(textures, ybotFbx, idleFbx, walkFbx, runFbx) {
+  _Initialize(textures, ybotFbx, idleFbx, walkFbx, runFbx, fallFbx, jumpFbx) {
 
     // need a scene
     this._scene = new THREE.Scene();
@@ -78,7 +96,7 @@ class OrbitTests {
     this._tmpTrans = new Ammo.btTransform();
 
     this.setupPhysicsWorld();
-    this._cbContactPairResult = null; // for collision detection
+    this._feetOnGroundResult = null; // for collision detection
     this.setupFeetOnGroundResultCallback();
 
     // camera aspect ratio starts out matching viewport aspect ratio
@@ -125,23 +143,40 @@ class OrbitTests {
     const widthSegments = Math.ceil(WorldParams.GroundScale[0] * WorldParams.ScaleSegRatio);
     const heightSegments = Math.ceil(WorldParams.GroundScale[1] * WorldParams.ScaleSegRatio);
     const groundHeightMapTexture = textures.groundHeightMapTexture;
-    this.loadTexture(groundHeightMapTexture, widthSegments, heightSegments, flatArray);
+    this.loadTerrainHeightmapTexture(groundHeightMapTexture, widthSegments, heightSegments, flatArray);
 
     const terrainHeight = WorldParams.TerrainHeight;
     this._groundPlane = this.createPlane("ground", 0xDD55FF, WorldParams.GroundScale, [0, 0, 0], [0, 0, 0], widthSegments, heightSegments, terrainHeight, flatArray);
 
     this._playerResetHeight = WorldParams.PlayerFallReset;
     const playerModelObjects = {
-      playerModel: ybotFbx, 
-      playerIdle: idleFbx, 
-      playerWalk: walkFbx, 
-      playerRun: runFbx
+      playerModel: ybotFbx,
+      playerIdle: idleFbx,
+      playerWalk: walkFbx,
+      playerRun: runFbx,
+      playerFall: fallFbx,
+      playerJump: jumpFbx
     };
     this._player = this.createPlayer(playerModelObjects, new THREE.Vector3(WorldParams.PlayerStart.x, WorldParams.PlayerStart.y, WorldParams.PlayerStart.z));
+    GLOBAL.player = this._player;
     this._playerState = PSTATE.IDLE;
+    this._jumpState = JSTATE.NOJUMP;
 
     // controls
-    const controls = new MMOrbitControls(this._camera, this._player.obj3d, this._mvPlr, this._walkForward, this._walkBackward, this._runForward, this._runBackward, this._stopMoving, this._jump, this._groundCheck, this._collisionCheck, renderer.domElement);
+    const controls = new MMOrbitControls(this._camera, 
+      this._player.obj3d, 
+      PlayerParams.WalkImpulse,
+      PlayerParams.RunImpulse,
+      this._mvPlr,
+      this._walkForward, 
+      this._walkBackward, 
+      this._runForward, 
+      this._runBackward, 
+      this._stopMoving, 
+      this._jump, 
+      this._groundCheck, 
+      this._collisionCheck, 
+      renderer.domElement);
 
     // create our lights
     const light = new THREE.AmbientLight(0xFFFFFF, .4);
@@ -174,7 +209,7 @@ class OrbitTests {
     render();
   }
 
-  loadTexture = (texture, desiredWidth, desiredHeight, flatArray) => {
+  loadTerrainHeightmapTexture = (texture, desiredWidth, desiredHeight, flatArray) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     canvas.style.display = 'none';
@@ -218,7 +253,7 @@ class OrbitTests {
 
   _movePlayerCallback = (moveDelta) => {
 
-    if (!this._isTouchingGround()) {
+    if (!this._player.feetOnGround) {
       return;
     }
 
@@ -234,31 +269,23 @@ class OrbitTests {
       x: moveDelta.y === 0 ? (moveDelta.x * xzScalingFactor) : 0,
       y: moveDelta.y * yScalingFactor,
       z: moveDelta.y === 0 ? (moveDelta.z * xzScalingFactor) : 0
-
     };
 
     const resultantImpulse = new Ammo.btVector3(calcImpulse.x, calcImpulse.y, calcImpulse.z);
     resultantImpulse.op_mul(totalScalingFactor);
 
     body.applyCentralImpulse(resultantImpulse);
-
   }
 
-  _isTouchingGround = () => {
+  _detectCollision = () => {
 
-    return this._betterDetectCollision();
-
+    this._feetOnGroundResult.hasContact = false;
+    this._physicsWorld.contactPairTest(this._player.physicsBody, this._groundPlane.physicsBody, this._feetOnGroundResult);
+    const feetOnGround = this._feetOnGroundResult.hasContact;
+    this._player.feetOnGround = feetOnGround;
   }
 
-  _betterDetectCollision() {
-    this._cbContactPairResult.hasContact = false;
-    this._physicsWorld.contactPairTest(this._player.physicsBody, this._groundPlane.physicsBody, this._cbContactPairResult);
-    const feetOnGround = this._cbContactPairResult.hasContact;
-    //console.log(`we ${feetOnGround ? 'are' : 'are not'} touching the ground... right?`, feetLocation);
-    return feetOnGround;
-  }
-
-  _detectCollision() {
+  _detectCollisionBad() {
 
     const dispatcher = this._physicsWorld.getDispatcher();
     const numManifolds = dispatcher.getNumManifolds();
@@ -274,9 +301,6 @@ class OrbitTests {
 
         let contactPoint = contactManifold.getContactPoint(j);
         let distance = contactPoint.getDistance();
-
-        //console.log({manifoldIndex: i, contactIndex: j, distance: distance});
-
       }
     }
     return totalContacts > 0;
@@ -285,8 +309,6 @@ class OrbitTests {
   _walkForward = () => {
     if (this._playerState != PSTATE.WALKFORWARD) {
       this._playerState = PSTATE.WALKFORWARD;
-      const action = this._player.animation.walk;
-      this._playAction(action);
     }
   }
 
@@ -299,8 +321,6 @@ class OrbitTests {
   _runForward = () => {
     if (this._playerState != PSTATE.RUNFORWARD) {
       this._playerState = PSTATE.RUNFORWARD;
-      const action = this._player.animation.run;
-      this._playAction(action);
     }
   }
 
@@ -313,22 +333,13 @@ class OrbitTests {
   _stopMoving = () => {
     if (this._playerState != PSTATE.IDLE) {
       this._playerState = PSTATE.IDLE;
-      const action = this._player.animation.idle;
-      this._playAction(action);
     }
   }
 
   _jump = () => {
-    if (this._playerState != PSTATE.JUMP) {
-      this._playerState = PSTATE.JUMP;
+    if (this._jumpState != JSTATE.JUMP) {
+      this._jumpState = JSTATE.JUMP;
     }
-  }
-
-  _playAction = (newAction) => {
-    const prevAction = this._player.animation.current;
-    newAction.play();
-    prevAction.stop();
-    this._player.animation.current = newAction;
   }
 
   _groundCheck = () => {
@@ -342,10 +353,12 @@ class OrbitTests {
   createPlayer = (playerModelObjects, position) => {
 
     const {
-      playerModel: playerModel, 
-      playerIdle: playerIdle, 
+      playerModel: playerModel,
+      playerIdle: playerIdle,
       playerWalk: playerWalk,
-      playerRun: playerRun
+      playerRun: playerRun,
+      playerFall: playerFall,
+      playerJump: playerJump
     } = playerModelObjects;
 
     const mass = PlayerParams.Mass;
@@ -374,12 +387,13 @@ class OrbitTests {
     const idleAction = mixer.clipAction(playerIdle.animations[0]);
     const walkAction = mixer.clipAction(playerWalk.animations[0]);
     const runAction = mixer.clipAction(playerRun.animations[0]);
+    const fallAction = mixer.clipAction(playerFall.animations[0]);
+    const jumpAction = mixer.clipAction(playerJump.animations[0]);
     idleAction.play();
 
     obj3d.add(playerModel);
     obj3d.add(playerIdle);
     obj3d.add(playerWalk);
-
 
     this._scene.add(obj3d);
     obj3d.position.copy(position);
@@ -414,14 +428,18 @@ class OrbitTests {
       isPlayer: true,
       maxWalk: maxWalk,
       maxRun: maxRun,
-      animation: { 
+      animation: {
         mixer: mixer,
         idle: idleAction,
         walk: walkAction,
         run: runAction,
+        fall: fallAction,
+        jump: jumpAction,
 
         current: idleAction
-      }
+      },
+      feetOnGround: false, // you can walk
+      touchingGround: false // you are not falling
     };
     this._rigidBodies.push(retVal);
 
@@ -463,17 +481,13 @@ class OrbitTests {
       const meshMaterial = new THREE.MeshPhongMaterial({
         transparent: true,
         opacity: .9,
-
-
         color: 0x7f00ff,
         emissive: 0xff,
         specular: 0x191900,
         shininess: 67,
         flatShading: true,
-
         envMap: this._cubeTexture,
         reflectivity: .6,
-
         side: THREE.DoubleSide
       });
       mesh.add(new THREE.Mesh(geometry, meshMaterial));
@@ -525,11 +539,51 @@ class OrbitTests {
     const retVal = { obj3d: obj3d, physicsBody: body, isPlayer: false, planeGeo: geometry };
     this._rigidBodies.push(retVal);
 
-
     return retVal;
   }
 
-  resetCone = () => {
+  _playAction = (newAction) => {
+    const prevAction = this._player.animation.current;
+    newAction.play();
+    prevAction.stop();
+    this._player.animation.current = newAction;
+  }
+
+  _handlePlayerAnimation = (linearVelocity) => {
+
+    const current = this._player.animation.current;
+
+    //console.log(`feetOnGround: ${this._player.feetOnGround}`);
+
+    if (linearVelocity.y > 3) {
+      const action = this._player.animation.jump;
+      if (action != current) {
+        this._playAction(action);
+      }
+    } else if (linearVelocity.y < -3.5) {
+      const action = this._player.animation.fall;
+      if (action != current) {
+        this._playAction(action);
+      }
+    } else if (this._player.feetOnGround && linearVelocity.speed > 0.1 && linearVelocity.speed <= PlayerParams.MaxWalk) {
+      const action = this._player.animation.walk;
+      if (action != current) {
+        this._playAction(action);
+      }
+    } else if (this._player.feetOnGround && linearVelocity.speed > PlayerParams.MaxWalk) {
+      const action = this._player.animation.run;
+      if (action != current) {
+        this._playAction(action);
+      }
+    } else if (this._player.feetOnGround && linearVelocity.speed <= 0.1) {
+      const action = this._player.animation.idle;
+      if (action != current) {
+        this._playAction(action);
+      }
+    }
+  }
+
+  resetPlayerPosition = () => {
     const transform = new Ammo.btTransform();
     transform.setIdentity();
     transform.setOrigin(new Ammo.btVector3(WorldParams.PlayerStart.x, WorldParams.PlayerStart.y, WorldParams.PlayerStart.z));
@@ -579,7 +633,11 @@ class OrbitTests {
       newX = linXYZ.x * ratio;
       newZ = linXYZ.z * ratio;
     }
-    ammoObj.setLinearVelocity(new Ammo.btVector3(newX, newY, newZ));
+
+    const linearVelocity = { x: newX, y: newY, z: newZ, speed: speeding ? maxXZ : speed };
+    ammoObj.setLinearVelocity(new Ammo.btVector3(linearVelocity.x, linearVelocity.y, linearVelocity.z));
+
+    return linearVelocity;
   }
 
   updatePhysics = (deltaTime) => {
@@ -588,12 +646,15 @@ class OrbitTests {
       return;
     }
 
+    this._detectCollision();
 
     // Speed Limit
     const maxSpeed = (this._playerState == PSTATE.WALKBACKWARD || this._playerState == PSTATE.WALKFORWARD) ? this._player.maxWalk : this._player.maxRun;
     const maxFall = WorldParams.MaxFall;
-    this.limitSpeed(this._player.physicsBody, maxSpeed, maxFall);
+    const linearVelocity = this.limitSpeed(this._player.physicsBody, maxSpeed, maxFall);
 
+    // Animate based on velocity...
+    this._handlePlayerAnimation(linearVelocity);
 
     // Step world
     this._physicsWorld.stepSimulation(deltaTime, 10);
@@ -630,24 +691,27 @@ class OrbitTests {
         if (obj.isPlayer) {
 
           if (y < this._playerResetHeight) {
-            this.resetCone();
+            this.resetPlayerPosition();
           }
           const moveDelta = obj3d.position.clone();
           moveDelta.sub(oldObj3dPos);
           this._camera.position.add(moveDelta);
         }
-
       }
     }
-
   }
 
   setupFeetOnGroundResultCallback = () => {
 
-    this._cbContactPairResult = new Ammo.ConcreteContactResultCallback();
-    this._cbContactPairResult.hasContact = false;
+    this._feetOnGroundResult = new Ammo.ConcreteContactResultCallback();
+    this._feetOnGroundResult.hasContact = false;
 
-    this._cbContactPairResult.addSingleResult = function (cp, colObj0Wrap, partId0, index0, colObj1Wrap, partId1, index1) {
+    const player = this._player;
+    if (!player) {
+      console.log(`setupFeetOnGroundResultCallback can't find the player...`);
+    }
+
+    this._feetOnGroundResult.addSingleResult = function (cp, colObj0Wrap, partId0, index0, colObj1Wrap, partId1, index1) {
 
       let contactPoint = Ammo.wrapPointer(cp, Ammo.btManifoldPoint);
       const distance = contactPoint.getDistance();
@@ -655,7 +719,11 @@ class OrbitTests {
       const xyz = { x: mlocal.x(), y: mlocal.y(), z: mlocal.z() };
 
       // okay so distance might not matter that much. i'll keep it in...
-      if (distance > 0.01) return;
+      if (distance > 0.2) {
+        GLOBAL.player.touchingGround = false; 
+        return;
+      }
+      GLOBAL.player.touchingGround = true;
 
       const footContactDetected = xyz.y < PlayerParams.FootHeightThreshold;
       if (!footContactDetected) {
@@ -709,14 +777,9 @@ class OrbitTests {
       let worldPosDisplay = { x: worldPos.x(), y: worldPos.y(), z: worldPos.z() };
 
       console.log({ tag, localPosDisplay, worldPosDisplay });
-
     }
-
   }
-
 }
-
-
 
 let _APP = null;
 
