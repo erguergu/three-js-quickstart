@@ -150,7 +150,6 @@ class OrbitControls extends EventDispatcher {
 				spherical.radius *= scale;
 				// restrict radius to be between desired limits
 				spherical.radius = Math.max( scope.minDistance, Math.min( scope.maxDistance, spherical.radius ) );
-				console.log(`spherical.radius: ${spherical.radius}`);
 				// move target to panned location
 				if ( scope.enableDamping === true ) {
 					scope.target.addScaledVector( panOffset, scope.dampingFactor );
