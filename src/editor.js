@@ -26,6 +26,8 @@ const params = {
     addCone: addCone,
     addCylinder: addCylinder,
     addPlane: addPlane,
+    addSphere: addSphere,
+    cloneObject: cloneObject,
     removeObject: removeObject,
     setScale: setScale,
     setRotate: setRotate,
@@ -53,8 +55,8 @@ function init() {
     light.shadow.camera.near = 200;
     light.shadow.camera.far = 2000;
     light.shadow.bias = - 0.000222;
-    light.shadow.mapSize.width = 1024;
-    light.shadow.mapSize.height = 1024;
+    light.shadow.mapSize.width = 2048;
+    light.shadow.mapSize.height = 2048;
     scene.add(light);
 
     const planeGeometry = new THREE.PlaneGeometry(2000, 2000);
@@ -86,6 +88,8 @@ function init() {
     gui.add(params, 'addCone');
     gui.add(params, 'addCylinder');
     gui.add(params, 'addPlane');
+    gui.add(params, 'addSphere');
+    gui.add(params, 'cloneObject');
     gui.add(params, 'removeObject');
     gui.add(params, 'setScale');
     gui.add(params, 'setRotate');
@@ -113,9 +117,9 @@ function init() {
         //updateSplineOutline();
     });
 
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('pointerup', onPointerUp);
-    document.addEventListener('pointermove', onPointerMove);
+    document.getElementById("container").addEventListener('pointerdown', onPointerDown);
+    document.getElementById("container").addEventListener('pointerup', onPointerUp);
+    document.getElementById("container").addEventListener('pointermove', onPointerMove);
 }
 
 function addCube(position) {
@@ -139,9 +143,12 @@ function addPlane(position) {
     return addObject(geometry, position, doubleSide);
 }
 
-function addObject(geometry, position, doubleSide) {
-    const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff, side: doubleSide ? THREE.DoubleSide : THREE.FrontSide });
-    const object = new THREE.Mesh(geometry, material);
+function addSphere(position) {
+    const geometry = new THREE.SphereGeometry(40, 32, 16);
+    return addObject(geometry, position);
+}
+
+function setObjectPosition(object, position) {
 
     if (position) {
         object.position.copy(position);
@@ -150,12 +157,37 @@ function addObject(geometry, position, doubleSide) {
         object.position.y = controls.target.y;
         object.position.z = controls.target.z;
     }
+}
+
+function addObject(geometry, position, doubleSide) {
+    const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff, side: doubleSide ? THREE.DoubleSide : THREE.FrontSide });
+    const object = new THREE.Mesh(geometry, material);
+
+    setObjectPosition(object, position);
 
     object.castShadow = true;
     object.receiveShadow = true;
     scene.add(object);
     sceneObjects.push(object);
+    selectedObject = object;
+    reattach();
     return object;
+}
+
+function cloneObject(objectToClone) {
+    if (!objectToClone) {
+        objectToClone = selectedObject;
+    }
+    if (!objectToClone) {
+        return null;
+    }
+    const clone = objectToClone.clone();
+    //setObjectPosition(clone);
+    scene.add(clone);
+    sceneObjects.push(clone);
+    selectedObject = clone;
+    reattach();
+    return clone;
 }
 
 function reattach() {
@@ -167,19 +199,19 @@ function reattach() {
 function setScale() {
     transformControl.setSpace("world");
     transformControl.setMode("scale");
-    reattach();
+    //reattach();
 }
 
 function setRotate() {
     transformControl.setSpace("local");
     transformControl.setMode("rotate");
-    reattach();
+    //reattach();
 }
 
 function setMove() {
     transformControl.setSpace("world");
     transformControl.setMode("translate");
-    reattach();
+    //reattach();
 }
 
 function removeObject() {
@@ -205,6 +237,9 @@ function onPointerDown(event) {
 }
 
 function onPointerUp(event) {
+
+    const controlKeyPressed = event.ctrlKey;
+
     onUpPosition.x = event.clientX;
     onUpPosition.y = event.clientY;
 
@@ -214,10 +249,11 @@ function onPointerUp(event) {
     if (onDownPosition.distanceTo(onUpPosition) === 0) {
         const raytraceObject = getRaytraceObject(event);
         if (raytraceObject) {
+            console.log(`you clicked an object. It will be selected...`);
             selectedObject = raytraceObject;
             transformControl.attach(selectedObject);
-            console.log(`You clicked an object. What is going on with tranformControl:`, transformControl.object);
         } else {
+            console.log(`you clicked nothing. detaching...`);
             transformControl.detach();
         }
     }
@@ -235,9 +271,8 @@ function getRaytraceObject(event) {
     const intersects = raycaster.intersectObjects(sceneObjects);
 
     if (intersects.length > 0) {
-        const object = intersects[0].object;
+        const object = intersects[0].object;   
         if (object !== transformControl.object) {
-            //transformControl.attach(object);
             return object;
         }
     }
