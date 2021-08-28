@@ -37,7 +37,8 @@ const params = {
     setRotate: setRotate,
     setMove: setMove,
     createGroup: createGroup,
-    ungroup: ungroup
+    ungroup: ungroup,
+    changeColor: changeColor
 };
 
 init();
@@ -63,7 +64,7 @@ function init() {
     light.shadow.bias = - 0.000222;
     light.shadow.mapSize.width = 2048;
     light.shadow.mapSize.height = 2048;
-    scene.add(light);
+    //scene.add(light);
 
     const planeGeometry = new THREE.PlaneGeometry(2000, 2000);
     planeGeometry.rotateX(- Math.PI / 2);
@@ -124,7 +125,7 @@ function setupGui() {
 
     const oneSelected = selectedObjects.length == 1;
     const multSelected = selectedObjects.length > 1;
-    const groupSelected = oneSelected && groups.find(item => item == selectedObjects[0]);
+    const groupSelected = oneSelected && groups.find(item => item.uuid == selectedObjects[0].uuid);
     
     gui.add(params, 'addCube').name("Add Cube");
     gui.add(params, 'addCone').name("Add Cone");
@@ -134,6 +135,8 @@ function setupGui() {
     if (oneSelected) {
         if (groupSelected) {
             gui.add(params, 'ungroup').name('Ungroup');
+        } else {
+            gui.add(params, 'changeColor').name('Change Color');
         }
         gui.add(params, 'cloneObject').name("Clone");
         gui.add(params, 'removeObject').name("Remove");
@@ -241,6 +244,10 @@ function deselectObject() {
     setupGui();
 }
 
+function changeColor() {
+    selectedObjects[0].material.color.set(Math.random() * 0xffffff);
+}
+
 function addObject(geometry, position, doubleSide) {
     const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff, side: doubleSide ? THREE.DoubleSide : THREE.FrontSide });
     const object = new THREE.Mesh(geometry, material);
@@ -252,6 +259,7 @@ function addObject(geometry, position, doubleSide) {
     scene.add(object);
     selectableObjects.push(object);
     selectObject(object);
+    console.log(`created object:`, object);
     return object;
 }
 
