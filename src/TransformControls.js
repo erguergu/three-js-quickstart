@@ -475,7 +475,7 @@ class TransformControls extends Object3D {
 
 			this._offset.copy( this.pointEnd ).sub( this.pointStart );
 
-			const ROTATION_SPEED = 20 / this.worldPosition.distanceTo( _tempVector.setFromMatrixPosition( this.camera.matrixWorld ) );
+			const ROTATION_SPEED = 5 / this.worldPosition.distanceTo( _tempVector.setFromMatrixPosition( this.camera.matrixWorld ) );
 
 			if ( axis === 'E' ) {
 

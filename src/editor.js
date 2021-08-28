@@ -6,10 +6,12 @@ import { GUI } from './dat.gui.module.js';
 import { OrbitControls } from './OrbitControls.js';
 import { TransformControls } from './TransformControls.js';
 
+let gui;
+let guiControls = [];
+
 let container, stats;
 let camera, scene, renderer;
 let controls;
-const sceneObjects = [];
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -18,8 +20,10 @@ const onDownPosition = new THREE.Vector2();
 
 let transformControl;
 
-let hoverObject = null;
-let selectedObject = null;
+const selectableObjects = [];
+let selectedObjects = [];
+let selectedBoxes = [];
+let groups = [];
 
 const params = {
     addCube: addCube,
@@ -31,7 +35,9 @@ const params = {
     removeObject: removeObject,
     setScale: setScale,
     setRotate: setRotate,
-    setMove: setMove
+    setMove: setMove,
+    createGroup: createGroup,
+    ungroup: ungroup
 };
 
 init();
@@ -83,17 +89,8 @@ function init() {
     stats = new Stats();
     container.appendChild(stats.dom);
 
-    const gui = new GUI();
-    gui.add(params, 'addCube');
-    gui.add(params, 'addCone');
-    gui.add(params, 'addCylinder');
-    gui.add(params, 'addPlane');
-    gui.add(params, 'addSphere');
-    gui.add(params, 'cloneObject');
-    gui.add(params, 'removeObject');
-    gui.add(params, 'setScale');
-    gui.add(params, 'setRotate');
-    gui.add(params, 'setMove');
+    gui = new GUI();
+    setupGui();
     gui.open();
 
     // Controls
@@ -110,16 +107,43 @@ function init() {
     });
     scene.add(transformControl);
 
-    transformControl.addEventListener('objectChange', function () {
-        // okay so the squares that represent the points on the spline
-        // get updated somehow. I think this is custom stuff that
-        // causes the splines to match the points. let's see...
-        //updateSplineOutline();
+    transformControl.addEventListener('objectChange', function (e) {
+
+        // as you alter the object, you must also alter its bounding box
+        selectedBoxes.forEach(box => box.update());
     });
 
     document.getElementById("container").addEventListener('pointerdown', onPointerDown);
     document.getElementById("container").addEventListener('pointerup', onPointerUp);
     document.getElementById("container").addEventListener('pointermove', onPointerMove);
+}
+
+function setupGui() {
+    gui.destroy();
+    gui = new GUI();
+
+    const oneSelected = selectedObjects.length == 1;
+    const multSelected = selectedObjects.length > 1;
+    const groupSelected = oneSelected && groups.find(item => item == selectedObjects[0]);
+    
+    gui.add(params, 'addCube').name("Add Cube");
+    gui.add(params, 'addCone').name("Add Cone");
+    gui.add(params, 'addCylinder').name("Add Cylinder");
+    gui.add(params, 'addPlane').name("Add Plane");
+    gui.add(params, 'addSphere').name("Add Sphere");
+    if (oneSelected) {
+        if (groupSelected) {
+            gui.add(params, 'ungroup').name('Ungroup');
+        }
+        gui.add(params, 'cloneObject').name("Clone");
+        gui.add(params, 'removeObject').name("Remove");
+        gui.add(params, 'setScale').name("Scale");
+        gui.add(params, 'setRotate').name("Rotate");
+        gui.add(params, 'setMove').name("Move");
+    }
+    if (multSelected) {
+        gui.add(params, 'createGroup').name('Create Group');
+    }
 }
 
 function addCube(position) {
@@ -159,6 +183,64 @@ function setObjectPosition(object, position) {
     }
 }
 
+function multiSelectObject(object) {
+    // check if the object is already among the selected, if so remove it from the list
+    const highestObject = getHighestLevelObject(object);
+    const ind = selectedObjects.findIndex(p => p.uuid == highestObject.uuid);
+    if (ind >= 0) {
+        const [remObj] = selectedObjects.splice(ind, 1);
+        const [remBox] = selectedBoxes.splice(ind, 1);
+        scene.remove(remBox);
+    } else {
+
+        // otherwise just add the object to the list
+        transformControl.detach();
+        selectedObjects.push(highestObject);
+        const box = new THREE.BoxHelper(highestObject, 0xffffff);
+        selectedBoxes.push(box);
+        scene.add(box);
+    }
+    setupGui();
+}
+
+function selectObject(object) {
+    if (selectedObjects.length == 1 && selectedObjects[0] == object) {
+        return;
+    }
+    deselectObject();
+    const highestObject = getHighestLevelObject(object);
+    selectedObjects.push(highestObject);
+    selectedBoxes.push(new THREE.BoxHelper(highestObject, 0xffffff));
+    scene.add(selectedBoxes[0]);
+    setupGui();
+    console.log(`selected object at `, highestObject.position);
+}
+
+function getHighestLevelObject(object) {
+    if (object.parent.type == "Scene") {
+        return object;
+    } else {
+        return getHighestLevelObject(object.parent);
+    }
+}
+
+// group hierarchy...
+function getParentGroup(object) {
+    const group = groups.find((grp) => {
+        const foundObj = group.children.find(child => child.uuid == object.uuid);
+        return foundObj ? true : false;
+    });
+    return group;
+}
+
+function deselectObject() {
+    transformControl.detach();
+    selectedBoxes.forEach(box=>scene.remove(box));
+    selectedBoxes.length = 0;
+    selectedObjects.length = 0;
+    setupGui();
+}
+
 function addObject(geometry, position, doubleSide) {
     const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff, side: doubleSide ? THREE.DoubleSide : THREE.FrontSide });
     const object = new THREE.Mesh(geometry, material);
@@ -168,57 +250,98 @@ function addObject(geometry, position, doubleSide) {
     object.castShadow = true;
     object.receiveShadow = true;
     scene.add(object);
-    sceneObjects.push(object);
-    selectedObject = object;
-    reattach();
+    selectableObjects.push(object);
+    selectObject(object);
     return object;
 }
 
+function createGroup() {
+    const group = new THREE.Object3D();
+    const newPosition = new THREE.Vector3();
+    selectedObjects.forEach((child) => {
+        newPosition.x += child.position.x;
+        newPosition.y += child.position.y;
+        newPosition.z += child.position.z;
+        group.add(child);
+        // might need to keep the object selectable and then
+        // 'select' the group after determining that the object
+        // is a child of the group.... but recursion... ouch.
+        removeObjectFromArray(child, selectableObjects);
+    });
+    newPosition.x /= selectedObjects.length;
+    newPosition.y /= selectedObjects.length;
+    newPosition.z /= selectedObjects.length;
+    group.position.copy(newPosition);
+    selectedObjects.forEach((child) => {
+        child.position.x -= group.position.x;
+        child.position.y -= group.position.y;
+        child.position.z -= group.position.z;
+    });
+    deselectObject();
+    groups.push(group);
+    scene.add(group);
+    // see if recursive intersectObjects lets us select the group. otherwise
+    // the line below will need to go away...
+    selectableObjects.push(group);
+    console.log(`group created:`, group);
+}
+
+function ungroup() {
+    console.log(`I will break up the group.`);
+}
+
 function cloneObject(objectToClone) {
-    if (!objectToClone) {
-        objectToClone = selectedObject;
+    if (!objectToClone && selectedObjects.length == 1) {
+        objectToClone = selectedObjects[0];
     }
     if (!objectToClone) {
         return null;
     }
     const clone = objectToClone.clone();
-    //setObjectPosition(clone);
     scene.add(clone);
-    sceneObjects.push(clone);
-    selectedObject = clone;
-    reattach();
+    selectableObjects.push(clone);
+    selectObject(clone);
+    setMove();
     return clone;
 }
 
-function reattach() {
-    if (selectedObject) {
-        transformControl.attach(selectedObject);
+function activateTransformControl() {
+    if (selectedObjects.length == 1) {
+        transformControl.attach(selectedObjects[0]);
     }
 }
 
 function setScale() {
     transformControl.setSpace("world");
     transformControl.setMode("scale");
-    //reattach();
+    activateTransformControl();
 }
 
 function setRotate() {
     transformControl.setSpace("local");
     transformControl.setMode("rotate");
-    //reattach();
+    activateTransformControl();
 }
 
 function setMove() {
     transformControl.setSpace("world");
     transformControl.setMode("translate");
-    //reattach();
+    activateTransformControl();
 }
 
 function removeObject() {
-    const point = sceneObjects.pop();
+    if (selectedObjects.length == 1) {
+        scene.remove(selectedObjects[0]);
+        removeObjectFromArray(selectedObjects[0], selectableObjects);
+        deselectObject();
+    }
+}
 
-    if (transformControl.object === point) transformControl.detach();
-    scene.remove(point);
+function removeObjectFromArray(object, array) {
+    const ind = array.findIndex(p => p.uuid == object.uuid);
+    if (ind >= 0) {
+        array.splice(ind, 1);
+    }
 }
 
 function animate() {
@@ -243,18 +366,19 @@ function onPointerUp(event) {
     onUpPosition.x = event.clientX;
     onUpPosition.y = event.clientY;
 
-    // i get it, if you click without moving, de-select the object.
-    // except it works funny, it doesn't know if you are clicking on a widget
-    // or if you are clicking the object
     if (onDownPosition.distanceTo(onUpPosition) === 0) {
         const raytraceObject = getRaytraceObject(event);
-        if (raytraceObject) {
-            console.log(`you clicked an object. It will be selected...`);
-            selectedObject = raytraceObject;
-            transformControl.attach(selectedObject);
-        } else {
-            console.log(`you clicked nothing. detaching...`);
-            transformControl.detach();
+        if (controlKeyPressed) {
+            if (raytraceObject) {
+                multiSelectObject(raytraceObject);
+            }
+        }
+        else {
+            if (raytraceObject) {
+                selectObject(raytraceObject)
+            } else {
+                deselectObject();
+            }
         }
     }
 }
@@ -268,11 +392,12 @@ function getRaytraceObject(event) {
 
     raycaster.setFromCamera(pointer, camera);
 
-    const intersects = raycaster.intersectObjects(sceneObjects);
+    const intersects = raycaster.intersectObjects(selectableObjects, true);
 
     if (intersects.length > 0) {
         const object = intersects[0].object;   
         if (object !== transformControl.object) {
+            console.log(`found it`);
             return object;
         }
     }
