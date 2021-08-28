@@ -262,10 +262,7 @@ function createGroup() {
         newPosition.x += child.position.x;
         newPosition.y += child.position.y;
         newPosition.z += child.position.z;
-        group.add(child);
-        // might need to keep the object selectable and then
-        // 'select' the group after determining that the object
-        // is a child of the group.... but recursion... ouch.
+        group.attach(child);
         removeObjectFromArray(child, selectableObjects);
     });
     newPosition.x /= selectedObjects.length;
@@ -279,15 +276,23 @@ function createGroup() {
     });
     deselectObject();
     groups.push(group);
-    scene.add(group);
-    // see if recursive intersectObjects lets us select the group. otherwise
-    // the line below will need to go away...
+    scene.attach(group);
     selectableObjects.push(group);
+    selectObject(group);
     console.log(`group created:`, group);
 }
 
 function ungroup() {
-    console.log(`I will break up the group.`);
+    const group = selectedObjects[0];
+    removeObjectFromArray(group, groups);
+    const children = [];
+    group.children.forEach(child => children.push(child));
+    children.forEach(child => {
+        scene.attach(child);
+        selectableObjects.push(child);
+    });
+    removeObject(group); // get rid of the group object
+    children.forEach(child => multiSelectObject(child));
 }
 
 function cloneObject(objectToClone) {
@@ -329,12 +334,13 @@ function setMove() {
     activateTransformControl();
 }
 
-function removeObject() {
-    if (selectedObjects.length == 1) {
-        scene.remove(selectedObjects[0]);
-        removeObjectFromArray(selectedObjects[0], selectableObjects);
-        deselectObject();
+function removeObject(object) {    
+    if (!object && selectedObjects.length == 1) {
+        object = selectedObjects[0];
     }
+    scene.remove(object);
+    removeObjectFromArray(object, selectableObjects);
+    deselectObject();
 }
 
 function removeObjectFromArray(object, array) {
