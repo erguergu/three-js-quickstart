@@ -22,12 +22,30 @@ const clock = new THREE.Clock();
 const rigidBodies = [];
 let physicsWorld, tmpTrans;
 let logCount = 0, logMax = 10;
+let totalBallsCreated = 0;
+let frameCount = 0;
+let platform = null;
+let ballGeometry = null;
+const ballMaterials = [];
+let memLeak = { detected: false, functionName: '', exception: null };
+
+// MENU Options
+const menu = {
+    addBall: {f:addBall, n: 'Add Ball'},
+    toggleX: {f:false, n: 'Toggle X Rotate'},
+    toggleY: {f:true, n: 'Toggle Y Rotate'},
+    toggleZ: {f:false, n: 'Toggle Z Rotate'},
+    toggleRainBalls: {f:true, n: 'Toggle Rain Balls'},
+    memLeakTest: {f:false, n: 'MEM LEAK TEST'},
+    changePlatformColor: {f:changePlatformColor, n: 'Platform Color'}
+};
 
 init().then(result => animate());
 
 async function init() {
 
     await loadAmmo();
+    console.log(`Ammo loaded`, Ammo);
     setupPhysicsWorld();
 
     container = document.getElementById('container');
@@ -55,14 +73,33 @@ async function init() {
     controls.damping = 0.2;
     controls.addEventListener('change', render);
 
-    addModel();
+    // listen for window resize events
+    window.addEventListener('resize', () => {
+
+      // make sure scene always matches viewport size and aspect ratio
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth / window.innerHeight;
+
+      // make sure aspect ratio changes do not warp object shapes
+      camera.updateProjectionMatrix();
+    });
+
+    for (let i = 0; i < 100; i++) {
+        ballMaterials.push(new THREE.MeshPhongMaterial( { color: Math.random() * 0xffffff } ));
+    }
+    addModel(new THREE.Vector3(0,0,0));
+    //addModel(new THREE.Vector3(-1500,-1500,-1500));
+    //addModel(new THREE.Vector3(1500,-1500,-1500));
+    //addModel(new THREE.Vector3(1500,-1500,1500));
+    //addModel(new THREE.Vector3(-1500,-1500,1500));
 }
 
-// MENU Options
-const menu = {
-    //addModel: {f:addModel, n: 'Add Model'},
-    addBall: {f:addBall, n: 'Add Ball'}
-};
+function memLeakDetected(name, err) {
+    memLeak.detected = true;
+    memLeak.functionName = name;
+    memLeak.exception = err;
+    console.log(`Memory leak detected in ${name}`, err);
+}
 
 
 //////////////////////////////
@@ -88,12 +125,39 @@ function setupPhysicsWorld() {
 
 function updatePhysics(deltaTime) {
 
-    physicsWorld.stepSimulation( deltaTime, 10 );
+    if (memLeak.detected) { return; }
+    try {
+        physicsWorld.stepSimulation( deltaTime, 10 );
+        const uuidsToRemove = [];
 
-    for (let i = 0; i < rigidBodies.length; i++) {
-        // get the three js object
-        const obj3d = rigidBodies[i];
+        for (let i = 0; i < rigidBodies.length; i++) {
+            // get the three js object
+            const obj3d = rigidBodies[i];
 
+            if (obj3d.userData.physicsUpdate) {
+                obj3d.userData.physicsUpdate(obj3d, deltaTime);
+                if (obj3d.userData.destroyMe) {
+                    uuidsToRemove.push(obj3d.uuid);
+                }
+            }
+        }
+        for (let i = 0; i < uuidsToRemove.length; i++) {
+            const objInd = rigidBodies.findIndex(obj => obj.uuid == uuidsToRemove[i]);
+            const obj = rigidBodies[objInd];
+            rigidBodies.splice(objInd, 1);
+            obj.userData.destroy(obj);
+        }
+    } catch (err) {
+        memLeakDetected('updatePhysics', err);
+    }
+}
+
+
+// Update the Ball in AMMO
+function ballPhysicsUpdate(obj3d, deltaTime) {
+
+    if (memLeak.detected) { return; }
+    try {
         // get its physics object
         const objAmmo = obj3d.userData.physicsBody;
 
@@ -106,78 +170,133 @@ function updatePhysics(deltaTime) {
             if (myMotionState) {
                 // convert the position from local to world coords                
                 myMotionState.getWorldTransform(tmpTrans);
-                const ammoPosInWorldCoords = tmpTrans.getOrigin();
-                const x = ammoPosInWorldCoords.x();
-                const y = ammoPosInWorldCoords.y();
-                const z = ammoPosInWorldCoords.z();
+                const ammoPos = tmpTrans.getOrigin();
+                const ammoQuat = tmpTrans.getRotation();
 
-                const q = tmpTrans.getRotation();
-
-                if (logCount++ < logMax) {
-                    console.log(`x: ${x}, y: ${y}, z: ${z}`, objAmmo);
-                    console.log(`isActive`, objAmmo.isActive());
+                if (ammoPos.y() < -6000) {
+                    physicsWorld.removeRigidBody(objAmmo);
+                    obj3d.userData.destroyMe = true;
+                } else {
+                    // Set the three js object's position and rotation
+                    obj3d.position.set(ammoPos.x(), ammoPos.y(), ammoPos.z());
+                    obj3d.quaternion.set( ammoQuat.x(), ammoQuat.y(), ammoQuat.z(), ammoQuat.w() );
                 }
-
-                // Set the three js object's position and rotation
-                obj3d.position.set(x, y, z);
-                obj3d.quaternion.set( q.x(), q.y(), q.z(), q.w() );
             }
         }
+    } catch (err) {
+        memLeakDetected('ballPhysicsUpdate', err);
     }
 }
 
-function createAmmoBall(radius, position) {
-    const mass = 100;
+// Create the Ball in AMMO
+function createAmmoBall(radius, obj3d) {
+    if (memLeak.detected) { return; }
+    try {
+        const position = obj3d.position;
+        const mass = 100;
+        const friction = .4; // .4
+        const rollingFriction = .1; // .1
+        const disableDeactivation = 4;
+
+        const transform = new Ammo.btTransform();
+        const originVector = new Ammo.btVector3(position.x, position.y, position.z);
+        const initialQuat = new Ammo.btQuaternion(0, 0, 0, 1);
+        transform.setIdentity();
+        transform.setOrigin(originVector);
+        transform.setRotation(initialQuat);
+        const motionState = new Ammo.btDefaultMotionState(transform);
+
+        const colShape = new Ammo.btSphereShape(radius);
+
+        colShape.setMargin(0.05);
+        const localInertia = new Ammo.btVector3(0, 0, 0);
+        colShape.calculateLocalInertia(mass, localInertia);
+        const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
+        const body = new Ammo.btRigidBody(rbInfo);
+        body.setFriction(friction); //.4
+        body.setRollingFriction(rollingFriction); // .1
+        body.setActivationState(disableDeactivation);
+        //body.setAngularFactor(0, 0, 0);
+        physicsWorld.addRigidBody(body);
+
+        // Need to destroy all these things...
+        Ammo.destroy(transform);
+        Ammo.destroy(originVector);
+        Ammo.destroy(initialQuat);
+        obj3d.userData.ammoDestroy.push(motionState);
+        obj3d.userData.ammoDestroy.push(colShape);
+        obj3d.userData.ammoDestroy.push(body);
+        Ammo.destroy(localInertia);
+        Ammo.destroy(rbInfo);
+
+        return body;
+    } catch (err) {
+        memLeakDetected('createAmmoBall', err);
+    }
+}
+
+// Spin the loaded model
+function modelPhysicsUpdate(obj3d, deltaTime) {
+
+    if (memLeak.detected) { return; }
+    try {
+        const position = obj3d.position;
+        const time = Date.now() * 0.0001;
+        if (menu.toggleX.f) { obj3d.rotateX(THREE.Math.degToRad(.2)); }
+        if (menu.toggleY.f) { obj3d.rotateY(THREE.Math.degToRad(.1)); }
+        if (menu.toggleZ.f) { obj3d.rotateZ(THREE.Math.degToRad(.2)); }
+        const quat = obj3d.quaternion;
+        const transform = new Ammo.btTransform();
+        transform.setIdentity();
+        const newPosition = new Ammo.btVector3(position.x, position.y, position.z)
+        const newQuat = new Ammo.btQuaternion(quat.x, quat.y, quat.z, quat.w);
+        transform.setOrigin(newPosition);
+        transform.setRotation(newQuat);
+        const motionState = new Ammo.btDefaultMotionState(transform);
+        obj3d.userData.physicsBody.setMotionState(motionState);
+
+        Ammo.destroy(transform);
+        Ammo.destroy(newPosition);
+        Ammo.destroy(newQuat);
+        Ammo.destroy(motionState);
+    } catch (err) {
+        memLeakDetected('modelPhysicsUpdate', err);
+    }
+}
+
+// Create model from triangles in AMMO
+function generateAmmoObjFromTrianglesConcave(triangles, obj3d) {
+    const position = obj3d.position;
+    const mass = 0;
     const friction = .4; // .4
     const rollingFriction = .1; // .1
     const disableDeactivation = 4;
 
     const transform = new Ammo.btTransform();
     transform.setIdentity();
-    transform.setOrigin(new Ammo.btVector3(position.x, position.y, position.z));
-    transform.setRotation(new Ammo.btQuaternion(0, 0, 0, 1));
+    const originVector = new Ammo.btVector3(position.x, position.y, position.z);
+    transform.setOrigin(originVector);
     const motionState = new Ammo.btDefaultMotionState(transform);
 
-    const colShape = new Ammo.btSphereShape(radius);
-
-    colShape.setMargin(0.05);
-    const localInertia = new Ammo.btVector3(0, 0, 0);
-    colShape.calculateLocalInertia(mass, localInertia);
-    const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia);
-    const body = new Ammo.btRigidBody(rbInfo);
-    body.setFriction(friction); //.4
-    body.setRollingFriction(rollingFriction); // .1
-    body.setActivationState(disableDeactivation);
-    //body.setAngularFactor(0, 0, 0);
-    physicsWorld.addRigidBody(body);
-
-    return body;
-}
-
-function generateAmmoObjFromTrianglesConcave(triangles, position) {
-    const mass = 0;
-    const friction = .04; // .4
-    const rollingFriction = .01; // .1
-    const disableDeactivation = 4;
-
-    const transform = new Ammo.btTransform();
-    transform.setIdentity();
-    transform.setOrigin(new Ammo.btVector3(position.x, position.y, position.z));
-    const motionState = new Ammo.btDefaultMotionState(transform);
-
-    var mesh = new Ammo.btTriangleMesh(true, true);
+    const mesh = new Ammo.btTriangleMesh(true, true);
 
     for (let i = 0; i < triangles.length; i++) {
         const triangle = triangles[i];
         const triVec1 = triangle[0];
         const triVec2 = triangle[1];
         const triVec3 = triangle[2];
+        const ammVec1 = new Ammo.btVector3(triVec1.x, triVec1.y, triVec1.z);
+        const ammVec2 = new Ammo.btVector3(triVec2.x, triVec2.y, triVec2.z);
+        const ammVec3 = new Ammo.btVector3(triVec3.x, triVec3.y, triVec3.z);
         mesh.addTriangle(
-            new Ammo.btVector3(triVec1.x, triVec1.y, triVec1.z),
-            new Ammo.btVector3(triVec2.x, triVec2.y, triVec2.z),
-            new Ammo.btVector3(triVec3.x, triVec3.y, triVec3.z),
+            ammVec1,
+            ammVec2,
+            ammVec3,
             false
         );
+        Ammo.destroy(ammVec1);
+        Ammo.destroy(ammVec2);
+        Ammo.destroy(ammVec3);
     }
     const shape = new Ammo.btBvhTriangleMeshShape(mesh, true, true);
     shape.setMargin(0.05);
@@ -190,6 +309,14 @@ function generateAmmoObjFromTrianglesConcave(triangles, position) {
     body.setActivationState(disableDeactivation);
     body.setAngularFactor(0, 0, 0);
     physicsWorld.addRigidBody(body);
+
+    Ammo.destroy(transform);
+    Ammo.destroy(originVector);
+    obj3d.userData.ammoDestroy.push(mesh);
+    obj3d.userData.ammoDestroy.push(shape);
+    obj3d.userData.ammoDestroy.push(body);
+    Ammo.destroy(localInertia);
+    Ammo.destroy(rbInfo);
 
     return body;
 }
@@ -319,6 +446,22 @@ function render() {
 
     const deltaTime = clock.getDelta();
 
+    const framesPerSpawn = menu.memLeakTest.f ? 0 : 30;
+    if (frameCount++ >= framesPerSpawn) {
+        frameCount = 0;
+        if (menu.toggleRainBalls.f) {
+            addBall();
+            if (menu.memLeakTest.f) {
+                addBall();
+                addBall();
+                addBall();
+                addBall();
+                addBall();
+                addBall();
+            }
+        }
+    }
+
     updatePhysics(deltaTime);
     renderer.render(scene, camera);
 }
@@ -337,15 +480,16 @@ function addDirectionalLight() {
     scene.add(light);
 
     //Set up shadow properties for the light
-    light.shadow.mapSize.width = 10000; // default
-    light.shadow.mapSize.height = 10000; // default
-    light.shadow.camera.near = 0.5; // default
-    light.shadow.camera.far = 10000; // default
-    light.shadow.camera.left = -10000;
-    light.shadow.camera.bottom = -10000;
-    light.shadow.camera.top = 10000;
-    light.shadow.camera.right = 10000;
+    light.shadow.mapSize.width = 20000;
+    light.shadow.mapSize.height = 20000;
+    light.shadow.camera.near = 0.5;
+    light.shadow.camera.far = 20000;
+    light.shadow.camera.left = -20000;
+    light.shadow.camera.bottom = -20000;
+    light.shadow.camera.top = 20000;
+    light.shadow.camera.right = 20000;
 }
+
 function setupGui() {
     gui.destroy();
     gui = new GUI();
@@ -356,23 +500,66 @@ function setupGui() {
     }
 }
 
-function addBall() {
-    const radius = 75;
+function toggleXRotate() {
+    doXRotate = !doXRotate;
+}
+
+function toggleYRotate() {
+    doYRotate = !doYRotate;
+}
+
+function toggleZRotate() {
+    doZRotate = !doZRotate;
+}
+
+function toggleRainBalls() {
+    doRainBalls = !doRainBalls;
+}
+
+function addBall() {    
+    if (memLeak.detected) { return; }
+    const radius = 50;
     const widthSegs = 32;
     const heightSegs = 16;
-    const initialY = 800;
+    const initialY = 4000;
+    const spawnArea = menu.memLeakTest.f ? 6000 : 1500;
 
-    const geometry = new THREE.SphereGeometry( radius, widthSegs, heightSegs );
-    const material = new THREE.MeshPhongMaterial( { color: 0xffff00 } );
-    const sphere = new THREE.Mesh( geometry, material );
+    if (!ballGeometry) {
+        ballGeometry = new THREE.SphereGeometry( radius, widthSegs, heightSegs );
+    }
+    const ind = Math.floor(Math.random()*ballMaterials.length);
+    const material = ballMaterials[ind];
+    const sphere = new THREE.Mesh( ballGeometry, material );
     sphere.castShadow = true;
     sphere.receiveShadow = true;
     scene.add( sphere );
     sphere.position.y = initialY;
-    sphere.userData.physicsBody = createAmmoBall(radius, sphere.position);
-    console.log(`Added Ball:`, sphere);
+    sphere.position.x = (Math.random() * spawnArea)-(spawnArea/2);
+    sphere.position.z = (Math.random() * spawnArea)-(spawnArea/2);
+    sphere.userData.ammoDestroy = [];
+    sphere.userData.physicsBody = createAmmoBall(radius, sphere);
+    sphere.userData.physicsUpdate = ballPhysicsUpdate;
+    sphere.userData.destroy = destroyBall;
 
     rigidBodies.push(sphere);
+    if (totalBallsCreated++ % 1000 == 0) {
+        console.log(`Total Balls Created: ${totalBallsCreated-1}, current rigidbody count: ${rigidBodies.length}`);
+        // i get up to ~58,000 before this crashes
+    }
+}
+
+function destroyBall(ball) {
+    scene.remove(ball);
+    ball.geometry.dispose();
+    ball.material.dispose();
+    for (let i = 0; i < ball.userData.ammoDestroy; i++) {
+        Ammo.destroy(ball.userData.ammoDestroy[i]);
+    }
+    ball.userData.ammoDestroy.length = 0;
+    delete ball.userData.physicsBody;
+    delete ball.userData;
+    //delete ball.material;
+    //delete ball.geometry;
 }
 
 async function loadFbx(path) {
@@ -382,97 +569,48 @@ async function loadFbx(path) {
     });
 }
 
-async function addModel() {
+async function addModel(position) {
     const fbx = await loadFbx('./src/ThreeAmmo.fbx');
     const model = extractMesh(fbx);
+
     model.castShadow = true;
     model.receiveShadow = true;
+    platform = model;
+    changePlatformColor();
 
     scene.add(model);
 
     const vertices = model.geometry.attributes.position.array;
-    const triangles = getTriangles(vertices);
-    const newTriangles = getTrianglesBarf(vertices, model.matrixWorld);
+    const triangles = getTriangles(vertices, model.matrixWorld);
 
-    console.log(`model`, model);
-    model.userData.physicsBody = generateAmmoObjFromTrianglesConcave(newTriangles, model.position);
+
+
+    model.updateMatrix();
+
+    model.geometry.applyMatrix4( model.matrix );
+    
+    model.position.set( 0, 0, 0 );
+    model.rotation.set( 0, 0, 0 );
+    model.scale.set( 1, 1, 1 );
+    model.updateMatrix();
+
+    model.position.x = position.x;
+    model.position.y = position.y;
+    model.position.z = position.z;
+
+
+    model.userData.ammoDestroy = [];
+    model.userData.physicsBody = generateAmmoObjFromTrianglesConcave(triangles, model);
+    model.userData.physicsUpdate = modelPhysicsUpdate;
+    rigidBodies.push(model);
+    
 }
 
-async function addModelBarf() {
-
-    const scalefactor = 1;
-    const fbx = await loadFbx('./src/ThreeAmmo.fbx');
-    const model = extractMesh(fbx);
-    const modelVertices = model.geometry.attributes.position.array;
-    //scene.add(model);
-
-    //model.rotation.set(-1.1, 0, 0);
-    model.position.z = 75;
-
-    console.log(`model`, model);
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute( 'position', new THREE.BufferAttribute( modelVertices, 3 ) );
-    geometry.rotateX(-Math.PI/2);
-    geometry.scale(100, 100, 100);
-
-    // you have to do this or it flickers
-    geometry.computeVertexNormals();
-
-    const material = new THREE.MeshPhongMaterial( { color: 0xdd00dd } );
-    const mesh = new THREE.Mesh( geometry, material );
-
-    //mesh.rotation.set(-Math.PI/2, 0, 0);
-    //mesh.scale.set(100, 100, 100);
-
-    const vertices = geometry.attributes.position.array;
-
-    // okay lets skip this one more time....
-    //scene.add(mesh);
-
-    const triangles = getTriangles(vertices, mesh.matrixWorld);
-
-    // now get the EXACT vercices that the triangle thing has
-    const tverts = new Float32Array(modelVertices.length);
-    for (let i = 0; i < triangles.length; i++) {
-        const [tv1, tv2, tv3] = triangles[i];
-        tverts[i*9] = tv1.x;
-        tverts[i*9+1] = tv1.y;
-        tverts[i*9+2] = tv1.z;
-        tverts[i*9+3] = tv2.x;
-        tverts[i*9+4] = tv2.y;
-        tverts[i*9+5] = tv2.z;
-        tverts[i*9+6] = tv3.x;
-        tverts[i*9+7] = tv3.y;
-        tverts[i*9+8] = tv3.z;
-    }
-
-    const tvertGeo = new THREE.BufferGeometry();
-    tvertGeo.setAttribute( 'position', new THREE.BufferAttribute( tverts, 3 ) );
-    tvertGeo.computeVertexNormals();
-    const tvertMesh = new THREE.Mesh(tvertGeo, material);
-    scene.add(tvertMesh);
-
-    tvertMesh.userData.physicsBody = generateAmmoObjFromTriangles(triangles, model.position, model.quaternion);
+function changePlatformColor() {
+    platform.material.color.set(Math.random() * 0xffffff);
 }
 
-function getTriangles(vertices) {
-    const triangles = [];
-
-    for (let i = 0; i < vertices.length - 9; i += 9) {
-        triangles.push([
-            { x:vertices[i], y:vertices[i+1], z:vertices[i+2]},
-            { x:vertices[i+3], y:vertices[i+4], z:vertices[i+5]},
-            { x:vertices[i+6], y:vertices[i+7], z:vertices[i+8]},
-        ]);
-    }
-
-    console.log(`vertices:`, vertices);
-    //console.log(`triangles:`, triangles);
-    return triangles;
-}
-
-function getTrianglesBarf(vertices, matrixWorld) {
+function getTriangles(vertices, matrixWorld) {
     const triangleVectors = [];
     const triangles = [];
 
@@ -496,8 +634,6 @@ function getTrianglesBarf(vertices, matrixWorld) {
         ]);
     }
 
-    console.log(`triangleVectors:`, triangleVectors);
-    //console.log(`triangles:`, triangles);
     return triangles;
 }
 
